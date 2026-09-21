@@ -59,7 +59,7 @@ class VolumeScannerTests(unittest.TestCase):
         alert = evaluate(snapshot, self.profile, 1_500_000, 1.0, Thresholds(min_5m_dollar_volume=1))
         payload = DiscordNotifier("").payload(alert)
         names = {item["name"] for item in payload["embeds"][0]["fields"]}
-        self.assertEqual(names, {"Time-of-Day RVOL", "ATR Progress"})
+        self.assertEqual(names, {"Price", "Time-of-Day RVOL", "ATR Progress"})
 
 
 if __name__ == "__main__":

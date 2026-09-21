@@ -31,6 +31,7 @@ class DiscordNotifier:
         bullish = alert.direction == "BULLISH"
         color = 0xF1C40F if alert.severity.value == "EXTREME" else (0x2ECC71 if bullish else 0xE74C3C)
         fields = [
+            field("Price", f"${snapshot.price:.2f}"),
             field("Time-of-Day RVOL", f"{alert.tod_rvol:.2f}x"),
             field("ATR Progress", number(alert.atr_progress, " ATR")),
         ]
