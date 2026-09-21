@@ -52,18 +52,15 @@ class VolumeScannerTests(unittest.TestCase):
         alert = evaluate(snapshot, self.profile, 1_000_000, 0.01, Thresholds(min_5m_dollar_volume=1))
         self.assertIsNone(alert)
 
-    def test_discord_payload_explains_signal(self):
+    def test_discord_payload_is_tight(self):
         stamp = datetime(2026, 9, 18, 9, 34, 59, tzinfo=TZ)
         normal = self.profile.expected_cumulative(4, 59 / 60)
         snapshot = StockSnapshot("COIN", 307, int(normal * 3), stamp, 300, 299, 308, 299)
         alert = evaluate(snapshot, self.profile, 1_500_000, 1.0, Thresholds(min_5m_dollar_volume=1))
         payload = DiscordNotifier("").payload(alert)
         names = {item["name"] for item in payload["embeds"][0]["fields"]}
-        self.assertIn("Time-of-Day RVOL", names)
-        self.assertIn("ATR Progress", names)
-        self.assertIn("5m Price Speed", names)
+        self.assertEqual(names, {"Time-of-Day RVOL", "ATR Progress"})
 
 
 if __name__ == "__main__":
     unittest.main()
-
