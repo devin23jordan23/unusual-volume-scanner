@@ -33,14 +33,15 @@ def evaluate(
         day_range = (snapshot.high_price - snapshot.low_price) / profile.atr14
 
     volume_ok = tod_rvol >= thresholds.min_tod_rvol or (local_rvol or 0) >= thresholds.min_local_rvol
-    movement_ok = (
+    opening_move_ok = (
         (atr_progress or 0) >= thresholds.min_atr_progress
         or (day_range or 0) >= thresholds.min_range_atr
-        or (
-            abs(price_change_5m_pct or 0) >= thresholds.min_5m_move_pct
-            and (speed_ratio or 0) >= thresholds.min_speed_ratio
-        )
     )
+    fresh_move_ok = (
+        abs(price_change_5m_pct or 0) >= thresholds.min_5m_move_pct
+        and (speed_ratio or 0) >= thresholds.min_speed_ratio
+    )
+    movement_ok = fresh_move_ok or (idx < 10 and opening_move_ok)
     if not volume_ok or not movement_ok or dollar_volume_5m < thresholds.min_5m_dollar_volume:
         return None
 
@@ -90,4 +91,3 @@ def classify(tod: float, local: float | None, atr: float | None, speed: float | 
     if tod >= thresholds.min_tod_rvol:
         return Severity.IN_PLAY
     return Severity.WATCH
-

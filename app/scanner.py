@@ -62,7 +62,12 @@ class VolumeScanner:
         if ranked:
             LOG.info(
                 "qualified candidates=%s",
-                ",".join(f"{alert.snapshot.symbol}:{alert.tod_rvol:.2f}x" for alert in ranked),
+                ",".join(
+                    f"{alert.snapshot.symbol}:{alert.tod_rvol:.2f}x/"
+                    f"{alert.price_change_5m_pct or 0:+.2f}%/"
+                    f"{alert.speed_ratio or 0:.2f}speed"
+                    for alert in ranked
+                ),
             )
         ranked = ranked[:self.settings.max_alerts_per_scan]
         if ranked and not self.alerts.notification_ready(
@@ -87,4 +92,3 @@ class VolumeScanner:
         except Exception as exc:
             LOG.warning("profile refresh failed for %s: %s", symbol, exc)
             return self.profiles.profiles.get(symbol)
-

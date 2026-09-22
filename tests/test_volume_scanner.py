@@ -90,6 +90,18 @@ class VolumeScannerTests(unittest.TestCase):
         alert = evaluate(snapshot, self.profile, 1_000_000, 0.01, Thresholds(min_5m_dollar_volume=1))
         self.assertIsNone(alert)
 
+    def test_stale_high_rvol_move_is_rejected_after_open(self):
+        stamp = datetime(2026, 9, 18, 11, 0, 30, tzinfo=TZ)
+        snapshot = StockSnapshot("SHOP", 330, 9_000_000, stamp, 300, 299, 331, 299)
+        alert = evaluate(snapshot, self.profile, 1_000_000, 0.02, Thresholds(min_5m_dollar_volume=1))
+        self.assertIsNone(alert)
+
+    def test_fresh_fast_move_qualifies_after_open(self):
+        stamp = datetime(2026, 9, 18, 9, 44, 30, tzinfo=TZ)
+        snapshot = StockSnapshot("COIN", 307, 5_000_000, stamp, 300, 299, 308, 299)
+        alert = evaluate(snapshot, self.profile, 1_000_000, 1.0, Thresholds(min_5m_dollar_volume=1))
+        self.assertIsNotNone(alert)
+
     def test_discord_payload_is_tight(self):
         stamp = datetime(2026, 9, 18, 9, 34, 59, tzinfo=TZ)
         normal = self.profile.expected_cumulative(4, 59 / 60)
