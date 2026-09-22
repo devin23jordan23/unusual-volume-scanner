@@ -20,11 +20,21 @@ def start_auth_server(client) -> None:
             if urlparse(self.path).path != "/schwab-auth":
                 self.send_error(404)
                 return
-            if os.path.exists(client.token_file):
-                self.page(200, "Schwab is already authorized.")
-                return
+            status = (
+                "A token is stored. Use this form only when Schwab authorization needs to be replaced."
+                if os.path.exists(client.token_file)
+                else "Schwab authorization is required."
+            )
             auth_url = html.escape(client.authorization_url(), quote=True)
-            self.page(200, f'<h1>Schwab authorization</h1><p><a href="{auth_url}" target="_blank">1. Sign in to Schwab</a></p><p>2. Paste the complete redirected URL below.</p><form method="post"><input type="password" name="setup_key" placeholder="Setup key" required><br><textarea name="callback_url" rows="5" cols="80" required></textarea><br><button type="submit">Authorize</button></form>')
+            self.page(
+                200,
+                f'<h1>Schwab authorization</h1><p>{status}</p>'
+                f'<p><a href="{auth_url}" target="_blank">1. Sign in to Schwab</a></p>'
+                '<p>2. Paste the complete redirected URL below.</p>'
+                '<form method="post"><input type="password" name="setup_key" placeholder="Setup key" required><br>'
+                '<textarea name="callback_url" rows="5" cols="80" required></textarea><br>'
+                '<button type="submit">Authorize</button></form>',
+            )
 
         def do_POST(self):
             length = int(self.headers.get("Content-Length", "0") or 0)

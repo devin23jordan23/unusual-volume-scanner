@@ -58,11 +58,18 @@ class VolumeScanner:
             candidates,
             key=lambda alert: (severity_rank(alert.severity.value), alert.tod_rvol, alert.local_rvol or 0),
             reverse=True,
-        )[:self.settings.max_alerts_per_scan]
+        )
+        if ranked:
+            LOG.info(
+                "qualified candidates=%s",
+                ",".join(f"{alert.snapshot.symbol}:{alert.tod_rvol:.2f}x" for alert in ranked),
+            )
+        ranked = ranked[:self.settings.max_alerts_per_scan]
         if ranked and not self.alerts.notification_ready(
             ranked[0].snapshot.timestamp,
             self.settings.min_alert_interval_seconds,
         ):
+            LOG.info("alert throttled symbol=%s", ranked[0].snapshot.symbol)
             ranked = []
         for alert in ranked:
             if self.notifier.send(alert):

@@ -4,10 +4,10 @@ from dataclasses import dataclass, field
 
 DEFAULT_UNIVERSE = {
     "AAPL", "AAOI", "ABNB", "ADBE", "AFRM", "AMAT", "AMD", "AMZN",
-    "ANET", "ARM", "ASML", "AVGO", "BA", "BE",
+    "ANET", "ARM", "ASML", "AVGO", "BA", "BAC", "BE",
     "CAT", "CEG", "CMG", "COIN", "COST", "CRM", "CRWD", "CVX", "DDOG",
     "DE", "DELL", "DIA", "ENPH", "FSLR", "GLD", "GOOGL", "HD", "HOOD",
-    "INTC", "ISRG", "IWM", "KLAC", "LLY", "LMT", "LOW",
+    "INTC", "ISRG", "IWM", "JPM", "KLAC", "LLY", "LMT", "LOW",
     "LRCX", "LULU", "MA", "MCD", "MDB", "META", "MRNA", "MRVL",
     "MSFT", "MSTR", "MTUM", "MU", "NBIS", "NET", "NFLX", "NKE", "NOW",
     "NRG", "NVDA", "OKLO", "OKTA", "ORCL", "PANW", "PLTR", "PYPL",
@@ -44,7 +44,7 @@ class Settings:
     log_level: str = "INFO"
     profile_sessions: int = 30
     max_alerts_per_scan: int = 1
-    min_alert_interval_seconds: int = 120
+    min_alert_interval_seconds: int = 300
     universe: set[str] = field(default_factory=lambda: set(DEFAULT_UNIVERSE))
     thresholds: Thresholds = field(default_factory=Thresholds)
 
@@ -60,7 +60,7 @@ def load_settings() -> Settings:
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         profile_sessions=int(os.getenv("UVS_PROFILE_SESSIONS", "30")),
         max_alerts_per_scan=int(os.getenv("UVS_MAX_ALERTS_PER_SCAN", "1")),
-        min_alert_interval_seconds=int(os.getenv("UVS_MIN_ALERT_INTERVAL_SECONDS", "120")),
+        min_alert_interval_seconds=int(os.getenv("UVS_MIN_ALERT_INTERVAL_SECONDS", "300")),
         universe=universe | extra,
         thresholds=Thresholds(
             min_price=float(os.getenv("UVS_MIN_PRICE", "5")),
