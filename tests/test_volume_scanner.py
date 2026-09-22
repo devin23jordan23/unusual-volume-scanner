@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from datetime import date, datetime, timedelta
+from unittest.mock import Mock, patch
 from zoneinfo import ZoneInfo
 
 from app.config import DEFAULT_UNIVERSE, Settings, Thresholds
@@ -9,6 +10,9 @@ from app.models import Candle, Severity, StockSnapshot
 from app.profiles import build_profile
 from app.rules import evaluate
 from app.state import AlertState
+
+with patch.dict("sys.modules", {"requests": Mock()}):
+    from app.schwab import SchwabClient
 
 TZ = ZoneInfo("America/New_York")
 
@@ -71,6 +75,14 @@ class VolumeScannerTests(unittest.TestCase):
         state.sent["COIN"] = {"sent_at": stamp.timestamp(), "severity": "HIGH"}
         self.assertFalse(state.notification_ready(stamp + timedelta(seconds=299), interval))
         self.assertTrue(state.notification_ready(stamp + timedelta(seconds=300), interval))
+
+    def test_unauthorized_worker_does_not_replace_newer_tokens(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {}, clear=True):
+            client = SchwabClient(Settings(data_dir=directory))
+            client.save_tokens({"access_token": "new", "refresh_token": "refresh", "expires_in": 1800})
+            client.refresh_tokens = Mock()
+            client.refresh_after_unauthorized("old")
+            client.refresh_tokens.assert_not_called()
 
     def test_high_volume_without_movement_is_rejected(self):
         stamp = datetime(2026, 9, 18, 10, 0, 30, tzinfo=TZ)

@@ -1,8 +1,10 @@
 import base64
+import fcntl
 import json
 import logging
 import os
 import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
@@ -67,23 +69,32 @@ class SchwabClient:
 
     def get(self, endpoint: str, params: dict | None = None) -> dict:
         for attempt in range(2):
-            response = requests.get(f"{BASE_URL}{endpoint}", headers=self.headers(), params=params or {}, timeout=20)
+            access_token = self.access_token()
+            response = requests.get(
+                f"{BASE_URL}{endpoint}",
+                headers=self.headers(access_token),
+                params=params or {},
+                timeout=20,
+            )
             if response.status_code == 401 and attempt == 0:
-                self.refresh_tokens(self.load_tokens())
+                self.refresh_after_unauthorized(access_token)
                 continue
             response.raise_for_status()
             return response.json()
         return {}
 
-    def headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self.access_token()}", "Accept": "application/json"}
+    def headers(self, access_token: str | None = None) -> dict[str, str]:
+        return {"Authorization": f"Bearer {access_token or self.access_token()}", "Accept": "application/json"}
 
     def access_token(self) -> str:
         tokens = self.load_tokens()
         if not tokens:
             raise RuntimeError(f"Schwab authorization required: {self.authorization_url()}")
         if expired(tokens):
-            tokens = self.refresh_tokens(tokens)
+            with self.token_lock():
+                tokens = self.load_tokens()
+                if expired(tokens):
+                    tokens = self.refresh_tokens(tokens)
         return tokens.get("access_token") or ""
 
     def load_tokens(self) -> dict:
@@ -92,13 +103,29 @@ class SchwabClient:
                 return json.load(handle)
         if not self.seed_refresh_token:
             return {}
-        tokens = {"refresh_token": self.seed_refresh_token, "access_token": self.seed_access_token, "expires_in": 0, "saved_at": 0}
-        return self.refresh_tokens(tokens)
+        return {"refresh_token": self.seed_refresh_token, "access_token": self.seed_access_token, "expires_in": 0, "saved_at": 0}
 
     def save_tokens(self, tokens: dict) -> None:
         tokens["saved_at"] = time.time()
-        with open(self.token_file, "w") as handle:
+        temporary = f"{self.token_file}.{os.getpid()}.tmp"
+        with open(temporary, "w") as handle:
             json.dump(tokens, handle, indent=2)
+        os.replace(temporary, self.token_file)
+
+    def refresh_after_unauthorized(self, failed_access_token: str) -> None:
+        with self.token_lock():
+            tokens = self.load_tokens()
+            if tokens.get("access_token") == failed_access_token:
+                self.refresh_tokens(tokens)
+
+    @contextmanager
+    def token_lock(self):
+        with open(f"{self.token_file}.lock", "a") as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle, fcntl.LOCK_UN)
 
     def refresh_tokens(self, tokens: dict) -> dict:
         response = requests.post(TOKEN_URL, headers=self.basic_headers(), data={"grant_type": "refresh_token", "refresh_token": tokens.get("refresh_token", "")}, timeout=20)
