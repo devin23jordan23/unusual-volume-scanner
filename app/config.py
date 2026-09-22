@@ -4,14 +4,14 @@ from dataclasses import dataclass, field
 
 DEFAULT_UNIVERSE = {
     "AAPL", "AAOI", "ABNB", "ADBE", "AFRM", "AMAT", "AMD", "AMZN",
-    "ANET", "ARM", "ASML", "AVGO", "AXP", "BA", "BAC", "BE", "C",
+    "ANET", "ARM", "ASML", "AVGO", "BA", "BE",
     "CAT", "CEG", "CMG", "COIN", "COST", "CRM", "CRWD", "CVX", "DDOG",
-    "DE", "DELL", "DIA", "ENPH", "FSLR", "GLD", "GOOGL", "GS", "HD",
-    "HOOD", "INTC", "ISRG", "IWM", "JPM", "KLAC", "LLY", "LMT", "LOW",
-    "LRCX", "LULU", "MA", "MCD", "MDB", "META", "MRNA", "MRVL", "MS",
+    "DE", "DELL", "DIA", "ENPH", "FSLR", "GLD", "GOOGL", "HD", "HOOD",
+    "INTC", "ISRG", "IWM", "KLAC", "LLY", "LMT", "LOW",
+    "LRCX", "LULU", "MA", "MCD", "MDB", "META", "MRNA", "MRVL",
     "MSFT", "MSTR", "MTUM", "MU", "NBIS", "NET", "NFLX", "NKE", "NOW",
     "NRG", "NVDA", "OKLO", "OKTA", "ORCL", "PANW", "PLTR", "PYPL",
-    "QCOM", "QQQ", "RBLX", "REGN", "SBUX", "SCHW", "SKHY", "SLV", "SMCI", "SMH",
+    "QCOM", "QQQ", "RBLX", "REGN", "SBUX", "SKHY", "SLV", "SMCI", "SMH",
     "SNDK", "SNOW", "SOFI", "SOXX", "SPY", "TEAM", "TGT", "SHOP", "TSLA",
     "TSM", "UBER", "UNH", "UPST", "USO", "V", "VRT", "VST", "WMT", "XLE",
     "XLF", "XLK", "XOM", "ZS",
@@ -43,6 +43,8 @@ class Settings:
     discord_webhook: str = ""
     log_level: str = "INFO"
     profile_sessions: int = 30
+    max_alerts_per_scan: int = 1
+    min_alert_interval_seconds: int = 120
     universe: set[str] = field(default_factory=lambda: set(DEFAULT_UNIVERSE))
     thresholds: Thresholds = field(default_factory=Thresholds)
 
@@ -57,6 +59,8 @@ def load_settings() -> Settings:
         discord_webhook=os.getenv("DISCORD_UNUSUAL_VOLUME_WEBHOOK", ""),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         profile_sessions=int(os.getenv("UVS_PROFILE_SESSIONS", "30")),
+        max_alerts_per_scan=int(os.getenv("UVS_MAX_ALERTS_PER_SCAN", "1")),
+        min_alert_interval_seconds=int(os.getenv("UVS_MIN_ALERT_INTERVAL_SECONDS", "120")),
         universe=universe | extra,
         thresholds=Thresholds(
             min_price=float(os.getenv("UVS_MIN_PRICE", "5")),

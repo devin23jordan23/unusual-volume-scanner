@@ -54,7 +54,16 @@ class VolumeScanner:
             if alert and self.alerts.should_send(alert, self.settings.thresholds.cooldown_seconds):
                 candidates.append(alert)
 
-        ranked = sorted(candidates, key=lambda alert: (severity_rank(alert.severity.value), alert.tod_rvol, alert.local_rvol or 0), reverse=True)[:3]
+        ranked = sorted(
+            candidates,
+            key=lambda alert: (severity_rank(alert.severity.value), alert.tod_rvol, alert.local_rvol or 0),
+            reverse=True,
+        )[:self.settings.max_alerts_per_scan]
+        if ranked and not self.alerts.notification_ready(
+            ranked[0].snapshot.timestamp,
+            self.settings.min_alert_interval_seconds,
+        ):
+            ranked = []
         for alert in ranked:
             if self.notifier.send(alert):
                 self.alerts.mark(alert)

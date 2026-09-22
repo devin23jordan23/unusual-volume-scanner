@@ -8,6 +8,7 @@ from app.discord import DiscordNotifier
 from app.models import Candle, Severity, StockSnapshot
 from app.profiles import build_profile
 from app.rules import evaluate
+from app.state import AlertState
 
 TZ = ZoneInfo("America/New_York")
 
@@ -56,6 +57,17 @@ class VolumeScannerTests(unittest.TestCase):
 
     def test_skhy_is_in_default_universe(self):
         self.assertIn("SKHY", DEFAULT_UNIVERSE)
+
+    def test_bank_names_are_not_in_default_universe(self):
+        self.assertTrue({"JPM", "BAC", "C", "GS", "MS", "SCHW", "AXP"}.isdisjoint(DEFAULT_UNIVERSE))
+
+    def test_global_notification_interval(self):
+        stamp = datetime(2026, 9, 22, 10, 0, tzinfo=TZ)
+        state = AlertState("/path/that/does/not/exist")
+        self.assertTrue(state.notification_ready(stamp, 120))
+        state.sent["COIN"] = {"sent_at": stamp.timestamp(), "severity": "HIGH"}
+        self.assertFalse(state.notification_ready(stamp + timedelta(seconds=119), 120))
+        self.assertTrue(state.notification_ready(stamp + timedelta(seconds=120), 120))
 
     def test_high_volume_without_movement_is_rejected(self):
         stamp = datetime(2026, 9, 18, 10, 0, 30, tzinfo=TZ)

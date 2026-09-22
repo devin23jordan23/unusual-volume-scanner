@@ -1,6 +1,7 @@
 import json
 import os
 from collections import defaultdict, deque
+from datetime import datetime
 
 from .models import StockSnapshot, VolumeAlert
 
@@ -52,6 +53,10 @@ class AlertState:
         if severity_rank(alert.severity.value) > severity_rank(last.get("severity", "")):
             return True
         return alert.snapshot.timestamp.timestamp() - float(last.get("sent_at", 0)) >= cooldown_seconds
+
+    def notification_ready(self, timestamp: datetime, interval_seconds: int) -> bool:
+        latest = max((float(item.get("sent_at", 0)) for item in self.sent.values()), default=0)
+        return timestamp.timestamp() - latest >= interval_seconds
 
     def mark(self, alert: VolumeAlert) -> None:
         self.sent[alert.snapshot.symbol] = {
