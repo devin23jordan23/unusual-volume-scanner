@@ -11,7 +11,7 @@ DEFAULT_UNIVERSE = {
     "LRCX", "LULU", "MA", "MCD", "MDB", "META", "MRNA", "MRVL", "MS",
     "MSFT", "MSTR", "MTUM", "MU", "NBIS", "NET", "NFLX", "NKE", "NOW",
     "NRG", "NVDA", "OKLO", "OKTA", "ORCL", "PANW", "PLTR", "PYPL",
-    "QCOM", "QQQ", "RBLX", "REGN", "SBUX", "SCHW", "SLV", "SMCI", "SMH",
+    "QCOM", "QQQ", "RBLX", "REGN", "SBUX", "SCHW", "SKHY", "SLV", "SMCI", "SMH",
     "SNDK", "SNOW", "SOFI", "SOXX", "SPY", "TEAM", "TGT", "SHOP", "TSLA",
     "TSM", "UBER", "UNH", "UPST", "USO", "V", "VRT", "VST", "WMT", "XLE",
     "XLF", "XLK", "XOM", "ZS",
@@ -21,7 +21,7 @@ DEFAULT_UNIVERSE = {
 @dataclass(frozen=True)
 class Thresholds:
     min_price: float = 5.0
-    max_price: float = 1_000.0
+    max_price: float = 10_000.0
     min_volume_today: int = 250_000
     min_5m_dollar_volume: float = 10_000_000
     min_tod_rvol: float = 2.0
@@ -60,7 +60,7 @@ def load_settings() -> Settings:
         universe=universe | extra,
         thresholds=Thresholds(
             min_price=float(os.getenv("UVS_MIN_PRICE", "5")),
-            max_price=float(os.getenv("UVS_MAX_PRICE", "1000")),
+            max_price=float(os.getenv("UVS_MAX_PRICE", "10000")),
             min_volume_today=int(os.getenv("UVS_MIN_VOLUME_TODAY", "250000")),
             min_5m_dollar_volume=float(os.getenv("UVS_MIN_5M_DOLLAR_VOLUME", "10000000")),
             min_tod_rvol=float(os.getenv("UVS_MIN_TOD_RVOL", "2.0")),

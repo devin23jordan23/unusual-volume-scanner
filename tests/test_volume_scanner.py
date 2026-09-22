@@ -3,7 +3,7 @@ import unittest
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from app.config import Thresholds
+from app.config import DEFAULT_UNIVERSE, Thresholds
 from app.discord import DiscordNotifier
 from app.models import Candle, Severity, StockSnapshot
 from app.profiles import build_profile
@@ -45,6 +45,17 @@ class VolumeScannerTests(unittest.TestCase):
         self.assertIsNotNone(alert)
         self.assertAlmostEqual(alert.tod_rvol, 3.0, places=1)
         self.assertEqual(alert.setup, "OPENING DRIVE")
+
+    def test_high_priced_opening_drive_is_not_filtered_out(self):
+        stamp = datetime(2026, 9, 22, 9, 34, 59, tzinfo=TZ)
+        normal = self.profile.expected_cumulative(4, 59 / 60)
+        snapshot = StockSnapshot("SNDK", 1_800, int(normal * 3), stamp, 1_750, 1_740, 1_805, 1_750)
+        alert = evaluate(snapshot, self.profile, int(self.profile.expected_window(4) * 3), 1.0, Thresholds(min_5m_dollar_volume=1))
+        self.assertIsNotNone(alert)
+        self.assertEqual(alert.setup, "OPENING DRIVE")
+
+    def test_skhy_is_in_default_universe(self):
+        self.assertIn("SKHY", DEFAULT_UNIVERSE)
 
     def test_high_volume_without_movement_is_rejected(self):
         stamp = datetime(2026, 9, 18, 10, 0, 30, tzinfo=TZ)
