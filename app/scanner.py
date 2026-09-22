@@ -51,7 +51,11 @@ class VolumeScanner:
             volume_5m, price_5m = self.rolling.metrics(snapshot)
             self.rolling.record(snapshot)
             alert = evaluate(snapshot, profile, volume_5m, price_5m, self.settings.thresholds)
-            if alert and self.alerts.should_send(alert, self.settings.thresholds.cooldown_seconds):
+            if alert and self.alerts.should_send(
+                alert,
+                self.settings.thresholds.cooldown_seconds,
+                self.settings.thresholds.realert_min_price_change_pct,
+            ):
                 candidates.append(alert)
 
         ranked = sorted(

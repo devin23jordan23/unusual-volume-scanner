@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from unittest.mock import Mock, patch
 from zoneinfo import ZoneInfo
@@ -116,6 +117,49 @@ class VolumeScannerTests(unittest.TestCase):
         snapshot = StockSnapshot("SHOP", 330, 9_000_000, stamp, 300, 299, 331, 299)
         alert = evaluate(snapshot, self.profile, 1_000_000, 0.02, Thresholds(min_5m_dollar_volume=1))
         self.assertIsNone(alert)
+
+    def test_small_late_day_drift_is_rejected_even_when_speed_is_relative_high(self):
+        profile = replace(
+            self.profile,
+            atr14=6.32,
+            minute_volume=tuple([20_000] * 390),
+            move_5m_pct=tuple([0.10] * 390),
+        )
+        stamp = datetime(2026, 9, 18, 15, 44, 0, tzinfo=TZ)
+        snapshot = StockSnapshot("SHOP", 149.04, 9_000_000, stamp, 144.55, 143, 150, 143)
+        alert = evaluate(snapshot, profile, 1_000_000, 0.45, Thresholds(min_5m_dollar_volume=1))
+        self.assertIsNone(alert)
+
+    def test_meaningful_local_atr_move_can_qualify_after_open(self):
+        profile = replace(
+            self.profile,
+            atr14=6.32,
+            minute_volume=tuple([20_000] * 390),
+            move_5m_pct=tuple([0.10] * 390),
+        )
+        stamp = datetime(2026, 9, 18, 15, 55, 0, tzinfo=TZ)
+        snapshot = StockSnapshot("SHOP", 147.39, 9_000_000, stamp, 144.55, 143, 150, 143)
+        alert = evaluate(snapshot, profile, 1_000_000, -0.70, Thresholds(min_5m_dollar_volume=1))
+        self.assertIsNotNone(alert)
+
+    def test_same_ticker_realert_requires_price_displacement(self):
+        stamp = datetime(2026, 9, 18, 10, 0, 0, tzinfo=TZ)
+        snapshot = StockSnapshot("SHOP", 149, 9_000_000, stamp, 145, 143, 150, 143)
+        profile = replace(
+            self.profile,
+            atr14=1.0,
+            minute_volume=tuple([20_000] * 390),
+            move_5m_pct=tuple([0.10] * 390),
+        )
+        alert = evaluate(snapshot, profile, 1_000_000, 1.0, Thresholds(min_5m_dollar_volume=1))
+        self.assertIsNotNone(alert)
+        with tempfile.TemporaryDirectory() as directory:
+            state = AlertState(f"{directory}/alerts.json")
+            state.mark(alert)
+            nearby = replace(alert, snapshot=replace(snapshot, price=149.75, timestamp=stamp + timedelta(minutes=20)))
+            displaced = replace(alert, snapshot=replace(snapshot, price=150.55, timestamp=stamp + timedelta(minutes=20)))
+            self.assertFalse(state.should_send(nearby, 600, 1.0))
+            self.assertTrue(state.should_send(displaced, 600, 1.0))
 
     def test_fresh_fast_move_qualifies_after_open(self):
         stamp = datetime(2026, 9, 18, 9, 44, 30, tzinfo=TZ)

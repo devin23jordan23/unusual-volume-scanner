@@ -26,13 +26,15 @@ def evaluate(
     local_rvol = volume_5m / expected_5m if volume_5m is not None and expected_5m > 0 else None
     normal_move = profile.normal_5m_move_pct(idx)
     speed_ratio = abs(price_change_5m_pct) / normal_move if price_change_5m_pct is not None and normal_move else None
+    move_5m_atr = five_minute_atr_move(snapshot.price, price_change_5m_pct, profile.atr14)
     dollar_volume_5m = (volume_5m if volume_5m is not None else snapshot.volume) * snapshot.price
     atr_progress = ratio_to_atr(snapshot.price, snapshot.open_price, profile.atr14)
     day_range = None
     if snapshot.high_price is not None and snapshot.low_price is not None and profile.atr14 > 0:
         day_range = (snapshot.high_price - snapshot.low_price) / profile.atr14
 
-    volume_ok = tod_rvol >= thresholds.min_tod_rvol or (local_rvol or 0) >= thresholds.min_local_rvol
+    opening_volume_ok = tod_rvol >= thresholds.min_tod_rvol or (local_rvol or 0) >= thresholds.min_local_rvol
+    fresh_volume_ok = (local_rvol or 0) >= thresholds.min_local_rvol
     opening_move_ok = (
         (atr_progress or 0) >= thresholds.min_atr_progress
         or (day_range or 0) >= thresholds.min_range_atr
@@ -40,8 +42,10 @@ def evaluate(
     fresh_move_ok = (
         abs(price_change_5m_pct or 0) >= thresholds.min_5m_move_pct
         and (speed_ratio or 0) >= thresholds.min_speed_ratio
+        and (move_5m_atr or 0) >= thresholds.min_5m_atr_move
     )
     movement_ok = fresh_move_ok or (idx < 10 and opening_move_ok)
+    volume_ok = opening_volume_ok if idx < 10 else fresh_volume_ok
     if not volume_ok or not movement_ok or dollar_volume_5m < thresholds.min_5m_dollar_volume:
         return None
 
@@ -57,11 +61,11 @@ def evaluate(
     if confirms_edge(snapshot, direction_value):
         reasons.append("pressing active side of day range")
 
-    severity = classify(tod_rvol, local_rvol, atr_progress, speed_ratio, thresholds)
+    severity = classify(tod_rvol, local_rvol, atr_progress, speed_ratio, move_5m_atr, idx < 10, thresholds)
     return VolumeAlert(
         snapshot, severity, direction_value, setup, tuple(reasons), tod_rvol,
         local_rvol, volume_5m, dollar_volume_5m, price_change_5m_pct,
-        speed_ratio, atr_progress, day_range,
+        speed_ratio, move_5m_atr, atr_progress, day_range,
     )
 
 
@@ -69,6 +73,13 @@ def ratio_to_atr(price: float, anchor: float | None, atr: float) -> float | None
     if anchor is None or atr <= 0:
         return None
     return abs(price - anchor) / atr
+
+
+def five_minute_atr_move(price: float, change_pct: float | None, atr: float) -> float | None:
+    if change_pct is None or atr <= 0 or change_pct <= -100:
+        return None
+    baseline = price / (1 + change_pct / 100)
+    return abs(price - baseline) / atr
 
 
 def direction(snapshot: StockSnapshot, price_change_5m_pct: float | None) -> str:
@@ -83,10 +94,22 @@ def confirms_edge(snapshot: StockSnapshot, move_direction: str) -> bool:
     return position >= 0.75 if move_direction == "BULLISH" else position <= 0.25
 
 
-def classify(tod: float, local: float | None, atr: float | None, speed: float | None, thresholds: Thresholds) -> Severity:
-    if tod >= thresholds.extreme_tod_rvol and ((atr or 0) >= 0.5 or (speed or 0) >= 3):
+def classify(
+    tod: float,
+    local: float | None,
+    atr: float | None,
+    speed: float | None,
+    move_5m_atr: float | None,
+    opening: bool,
+    thresholds: Thresholds,
+) -> Severity:
+    extreme_move = (atr or 0) >= 0.5 if opening else (
+        (speed or 0) >= 3 and (move_5m_atr or 0) >= thresholds.min_5m_atr_move * 1.25
+    )
+    if tod >= thresholds.extreme_tod_rvol and extreme_move:
         return Severity.EXTREME
-    if tod >= thresholds.high_tod_rvol and ((atr or 0) >= 0.3 or (local or 0) >= 3):
+    high_move = (atr or 0) >= 0.3 if opening else (local or 0) >= 3 and (speed or 0) >= 2
+    if tod >= thresholds.high_tod_rvol and high_move:
         return Severity.HIGH
     if tod >= thresholds.min_tod_rvol:
         return Severity.IN_PLAY

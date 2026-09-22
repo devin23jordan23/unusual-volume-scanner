@@ -89,5 +89,6 @@ class VolumeAlert:
     dollar_volume_5m: float
     price_change_5m_pct: float | None
     speed_ratio: float | None
+    move_5m_atr: float | None
     atr_progress: float | None
     range_atr: float | None

@@ -30,8 +30,10 @@ class Thresholds:
     min_local_rvol: float = 2.5
     min_atr_progress: float = 0.20
     min_range_atr: float = 0.35
-    min_5m_move_pct: float = 0.35
+    min_5m_move_pct: float = 0.50
+    min_5m_atr_move: float = 0.15
     min_speed_ratio: float = 2.0
+    realert_min_price_change_pct: float = 1.0
     cooldown_seconds: int = 600
 
 
@@ -73,8 +75,10 @@ def load_settings() -> Settings:
             min_local_rvol=float(os.getenv("UVS_MIN_LOCAL_RVOL", "2.5")),
             min_atr_progress=float(os.getenv("UVS_MIN_ATR_PROGRESS", "0.20")),
             min_range_atr=float(os.getenv("UVS_MIN_RANGE_ATR", "0.35")),
-            min_5m_move_pct=float(os.getenv("UVS_MIN_5M_MOVE_PCT", "0.35")),
+            min_5m_move_pct=float(os.getenv("UVS_MIN_5M_MOVE_PCT", "0.50")),
+            min_5m_atr_move=float(os.getenv("UVS_MIN_5M_ATR_MOVE", "0.15")),
             min_speed_ratio=float(os.getenv("UVS_MIN_SPEED_RATIO", "2.0")),
+            realert_min_price_change_pct=float(os.getenv("UVS_REALERT_MIN_PRICE_CHANGE_PCT", "1.0")),
             cooldown_seconds=int(os.getenv("UVS_COOLDOWN_SECONDS", "600")),
         ),
     )

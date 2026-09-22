@@ -46,13 +46,19 @@ class AlertState:
             except (OSError, ValueError, json.JSONDecodeError):
                 self.sent = {}
 
-    def should_send(self, alert: VolumeAlert, cooldown_seconds: int) -> bool:
+    def should_send(self, alert: VolumeAlert, cooldown_seconds: int, min_price_change_pct: float = 0) -> bool:
         last = self.sent.get(alert.snapshot.symbol)
         if not last:
             return True
         if severity_rank(alert.severity.value) > severity_rank(last.get("severity", "")):
             return True
-        return alert.snapshot.timestamp.timestamp() - float(last.get("sent_at", 0)) >= cooldown_seconds
+        if alert.snapshot.timestamp.timestamp() - float(last.get("sent_at", 0)) < cooldown_seconds:
+            return False
+        last_price = float(last.get("price", 0) or 0)
+        if last_price <= 0:
+            return min_price_change_pct <= 0
+        price_change = abs(alert.snapshot.price - last_price) / last_price * 100
+        return price_change >= min_price_change_pct
 
     def notification_ready(self, timestamp: datetime, interval_seconds: int) -> bool:
         latest = max((float(item.get("sent_at", 0)) for item in self.sent.values()), default=0)
@@ -62,6 +68,7 @@ class AlertState:
         self.sent[alert.snapshot.symbol] = {
             "sent_at": alert.snapshot.timestamp.timestamp(),
             "severity": alert.severity.value,
+            "price": alert.snapshot.price,
         }
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
         with open(self.path, "w") as handle:
@@ -70,4 +77,3 @@ class AlertState:
 
 def severity_rank(value: str) -> int:
     return {"WATCH": 1, "IN PLAY": 2, "HIGH": 3, "EXTREME": 4}.get(value, 0)
-
