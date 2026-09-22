@@ -6,7 +6,7 @@ DEFAULT_UNIVERSE = {
     "AAPL", "AAOI", "ABNB", "ADBE", "AFRM", "AMAT", "AMD", "AMZN",
     "ANET", "ARM", "ASML", "AVGO", "BA", "BAC", "BE",
     "CAT", "CEG", "CMG", "COIN", "COST", "CRM", "CRWD", "CVX", "DDOG",
-    "DE", "DELL", "DIA", "ENPH", "FSLR", "GLD", "GOOGL", "HD", "HOOD",
+    "DE", "DELL", "DIA", "ENPH", "FSLR", "GLD", "GOOG", "GOOGL", "HD", "HOOD",
     "INTC", "ISRG", "IWM", "JPM", "KLAC", "LLY", "LMT", "LOW",
     "LRCX", "LULU", "MA", "MCD", "MDB", "META", "MRNA", "MRVL",
     "MSFT", "MSTR", "MTUM", "MU", "NBIS", "NET", "NFLX", "NKE", "NOW",
@@ -82,4 +82,3 @@ def load_settings() -> Settings:
 
 def csv_set(value: str) -> set[str]:
     return {item.strip().upper() for item in value.split(",") if item.strip()}
-

@@ -29,6 +29,12 @@ class SchwabClient:
         self.client_secret = os.getenv("SCHWAB_CLIENT_SECRET", "")
         self.seed_refresh_token = os.getenv("SCHWAB_REFRESH_TOKEN", "")
         self.seed_access_token = os.getenv("SCHWAB_ACCESS_TOKEN", "")
+        self.broker_url = os.getenv("SCHWAB_TOKEN_BROKER_URL", "").strip()
+        self.broker_key = os.getenv("SCHWAB_TOKEN_BROKER_KEY", "")
+        self._broker_access_token = ""
+        self._broker_token_deadline = 0.0
+        if bool(self.broker_url) != bool(self.broker_key):
+            raise RuntimeError("SCHWAB_TOKEN_BROKER_URL and SCHWAB_TOKEN_BROKER_KEY must be set together")
         os.makedirs(settings.data_dir, exist_ok=True)
         self.token_file = os.path.join(settings.data_dir, "schwab_tokens.json")
         callback = os.getenv("SCHWAB_AUTH_CALLBACK_URL", "")
@@ -77,7 +83,10 @@ class SchwabClient:
                 timeout=20,
             )
             if response.status_code == 401 and attempt == 0:
-                self.refresh_after_unauthorized(access_token)
+                if self.broker_url:
+                    self.invalidate_broker_token(access_token)
+                else:
+                    self.refresh_after_unauthorized(access_token)
                 continue
             response.raise_for_status()
             return response.json()
@@ -87,6 +96,8 @@ class SchwabClient:
         return {"Authorization": f"Bearer {access_token or self.access_token()}", "Accept": "application/json"}
 
     def access_token(self) -> str:
+        if self.broker_url:
+            return self.broker_access_token()
         tokens = self.load_tokens()
         if not tokens:
             raise RuntimeError(f"Schwab authorization required: {self.authorization_url()}")
@@ -96,6 +107,29 @@ class SchwabClient:
                 if expired(tokens):
                     tokens = self.refresh_tokens(tokens)
         return tokens.get("access_token") or ""
+
+    def broker_access_token(self) -> str:
+        if self._broker_access_token and time.monotonic() < self._broker_token_deadline:
+            return self._broker_access_token
+        response = requests.get(
+            self.broker_url,
+            headers={"Authorization": f"Bearer {self.broker_key}", "Accept": "application/json"},
+            timeout=20,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        token = payload.get("access_token", "")
+        if not token:
+            raise RuntimeError("Schwab token broker returned no access token")
+        ttl = max(30, min(int(payload.get("expires_in", 240)), 240) - 30)
+        self._broker_access_token = token
+        self._broker_token_deadline = time.monotonic() + ttl
+        return token
+
+    def invalidate_broker_token(self, failed_access_token: str) -> None:
+        if self._broker_access_token == failed_access_token:
+            self._broker_access_token = ""
+            self._broker_token_deadline = 0.0
 
     def load_tokens(self) -> dict:
         if os.path.exists(self.token_file):
@@ -190,4 +224,3 @@ def expired(tokens: dict) -> bool:
 def chunks(items: list[str], size: int):
     for index in range(0, len(items), size):
         yield items[index:index + size]
-

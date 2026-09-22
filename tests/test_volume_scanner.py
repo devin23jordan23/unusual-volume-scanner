@@ -62,6 +62,9 @@ class VolumeScannerTests(unittest.TestCase):
     def test_skhy_is_in_default_universe(self):
         self.assertIn("SKHY", DEFAULT_UNIVERSE)
 
+    def test_both_google_share_classes_are_in_default_universe(self):
+        self.assertTrue({"GOOG", "GOOGL"}.issubset(DEFAULT_UNIVERSE))
+
     def test_selected_bank_names_in_default_universe(self):
         self.assertTrue({"JPM", "BAC"}.issubset(DEFAULT_UNIVERSE))
         self.assertTrue({"C", "GS", "MS", "SCHW", "AXP"}.isdisjoint(DEFAULT_UNIVERSE))
@@ -83,6 +86,24 @@ class VolumeScannerTests(unittest.TestCase):
             client.refresh_tokens = Mock()
             client.refresh_after_unauthorized("old")
             client.refresh_tokens.assert_not_called()
+
+    def test_broker_token_is_cached_and_refreshes_after_unauthorized(self):
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.side_effect = [
+            {"access_token": "broker-one", "expires_in": 240},
+            {"access_token": "broker-two", "expires_in": 240},
+        ]
+        with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {
+            "SCHWAB_TOKEN_BROKER_URL": "https://broker.test/schwab-token",
+            "SCHWAB_TOKEN_BROKER_KEY": "shared-secret",
+        }, clear=True), patch("app.schwab.requests.get", return_value=response) as get:
+            client = SchwabClient(Settings(data_dir=directory))
+            self.assertEqual(client.access_token(), "broker-one")
+            self.assertEqual(client.access_token(), "broker-one")
+            client.invalidate_broker_token("broker-one")
+            self.assertEqual(client.access_token(), "broker-two")
+            self.assertEqual(get.call_count, 2)
 
     def test_high_volume_without_movement_is_rejected(self):
         stamp = datetime(2026, 9, 18, 10, 0, 30, tzinfo=TZ)
