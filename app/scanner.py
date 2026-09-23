@@ -8,6 +8,7 @@ from .auth_server import start_auth_server
 from .config import Settings
 from .discord import DiscordNotifier
 from .market_hours import is_market_open
+from .models import StockSnapshot
 from .profiles import ProfileCache, build_profile
 from .rules import evaluate_lanes
 from .schwab import SchwabClient
@@ -26,6 +27,7 @@ class VolumeScanner:
         self.rolling = RollingStockState()
         self.alerts = AlertState(os.path.join(settings.data_dir, "volume_alert_state.json"))
         self.candidates = CandidateBook(os.path.join(settings.data_dir, "volume_candidate_state.json"))
+        self.bootstrapped: set[str] = set()
 
     def run(self) -> None:
         LOG.info("volume scanner started universe=%s", ",".join(sorted(self.settings.universe)))
@@ -49,6 +51,7 @@ class VolumeScanner:
                 profile = self.refresh_profile(snapshot.symbol, today)
             if not profile:
                 continue
+            self.bootstrap_mover(snapshot, profile)
             features = self.rolling.features(snapshot, profile)
             proposals = evaluate_lanes(snapshot, profile, features, self.settings.thresholds)
             confirmed = self.candidates.observe(
@@ -80,6 +83,43 @@ class VolumeScanner:
                 self.candidates.mark_alerted(alert)
         self.candidates.save()
         LOG.info("scan complete snapshots=%s qualified=%s sent=%s", len(snapshots), len(candidates), len(ranked))
+
+    def bootstrap_mover(self, snapshot: StockSnapshot, profile) -> None:
+        if snapshot.symbol in self.bootstrapped:
+            return
+        self.bootstrapped.add(snapshot.symbol)
+        if self.rolling.snapshots.get(snapshot.symbol) or profile.atr14 <= 0 or snapshot.open_price is None:
+            return
+        displacement = abs(snapshot.price - snapshot.open_price) / profile.atr14
+        range_atr = 0.0
+        if snapshot.high_price is not None and snapshot.low_price is not None:
+            range_atr = (snapshot.high_price - snapshot.low_price) / profile.atr14
+        edge = snapshot.range_position
+        at_edge = edge is not None and (edge >= 0.75 or edge <= 0.25)
+        if displacement < 0.25 and not (range_atr >= 0.50 and at_edge):
+            return
+        try:
+            candles = self.client.price_history(snapshot.symbol, calendar_days=2)
+        except Exception as exc:
+            LOG.warning("intraday bootstrap failed for %s: %s", snapshot.symbol, exc)
+            return
+        cumulative = 0
+        high = None
+        low = None
+        seeded = 0
+        for candle in candles:
+            if candle.timestamp.date() != snapshot.timestamp.date() or candle.timestamp >= snapshot.timestamp:
+                continue
+            cumulative += candle.volume
+            high = candle.high if high is None else max(high, candle.high)
+            low = candle.low if low is None else min(low, candle.low)
+            self.rolling.record(StockSnapshot(
+                snapshot.symbol, candle.close, cumulative, candle.timestamp,
+                snapshot.open_price, snapshot.previous_close, high, low,
+            ))
+            seeded += 1
+        if seeded:
+            LOG.info("seeded intraday path symbol=%s bars=%s", snapshot.symbol, seeded)
 
     def refresh_profile(self, symbol: str, today) -> object | None:
         try:
