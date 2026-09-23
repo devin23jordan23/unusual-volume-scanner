@@ -79,6 +79,9 @@ class VolumeScannerTests(unittest.TestCase):
         state.sent["COIN"] = {"sent_at": stamp.timestamp(), "severity": "HIGH"}
         self.assertTrue(state.notification_ready(stamp, interval))
 
+    def test_alert_batch_is_unlimited_by_default(self):
+        self.assertEqual(Settings().max_alerts_per_scan, 0)
+
     def test_unauthorized_worker_does_not_replace_newer_tokens(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {}, clear=True):
             client = SchwabClient(Settings(data_dir=directory))

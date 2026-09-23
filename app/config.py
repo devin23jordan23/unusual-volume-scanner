@@ -57,7 +57,7 @@ class Settings:
     discord_webhook: str = ""
     log_level: str = "INFO"
     profile_sessions: int = 30
-    max_alerts_per_scan: int = 3
+    max_alerts_per_scan: int = 0
     min_alert_interval_seconds: int = 0
     universe: set[str] = field(default_factory=lambda: set(DEFAULT_UNIVERSE))
     thresholds: Thresholds = field(default_factory=Thresholds)
@@ -73,7 +73,7 @@ def load_settings() -> Settings:
         discord_webhook=os.getenv("DISCORD_UNUSUAL_VOLUME_WEBHOOK", ""),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         profile_sessions=int(os.getenv("UVS_PROFILE_SESSIONS", "30")),
-        max_alerts_per_scan=int(os.getenv("UVS_MAX_ALERTS_PER_SCAN", "3")),
+        max_alerts_per_scan=int(os.getenv("UVS_MAX_ALERTS_PER_SCAN", "0")),
         min_alert_interval_seconds=int(os.getenv("UVS_MIN_ALERT_INTERVAL_SECONDS", "0")),
         universe=universe | extra,
         thresholds=Thresholds(

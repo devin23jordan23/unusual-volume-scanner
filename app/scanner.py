@@ -76,7 +76,8 @@ class VolumeScanner:
                     for alert in ranked
                 ),
             )
-        ranked = ranked[:self.settings.max_alerts_per_scan]
+        if self.settings.max_alerts_per_scan > 0:
+            ranked = ranked[:self.settings.max_alerts_per_scan]
         for alert in ranked:
             if self.notifier.send(alert):
                 self.alerts.mark(alert)
