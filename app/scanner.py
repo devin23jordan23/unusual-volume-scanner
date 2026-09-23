@@ -9,9 +9,9 @@ from .config import Settings
 from .discord import DiscordNotifier
 from .market_hours import is_market_open
 from .profiles import ProfileCache, build_profile
-from .rules import evaluate
+from .rules import evaluate_lanes
 from .schwab import SchwabClient
-from .state import AlertState, RollingStockState, severity_rank
+from .state import AlertState, CandidateBook, RollingStockState, severity_rank
 
 LOG = logging.getLogger(__name__)
 
@@ -25,6 +25,7 @@ class VolumeScanner:
         self.profiles = ProfileCache(os.path.join(settings.data_dir, "volume_profiles.json"))
         self.rolling = RollingStockState()
         self.alerts = AlertState(os.path.join(settings.data_dir, "volume_alert_state.json"))
+        self.candidates = CandidateBook(os.path.join(settings.data_dir, "volume_candidate_state.json"))
 
     def run(self) -> None:
         LOG.info("volume scanner started universe=%s", ",".join(sorted(self.settings.universe)))
@@ -48,41 +49,36 @@ class VolumeScanner:
                 profile = self.refresh_profile(snapshot.symbol, today)
             if not profile:
                 continue
-            volume_5m, price_5m = self.rolling.metrics(snapshot)
+            features = self.rolling.features(snapshot, profile)
+            proposals = evaluate_lanes(snapshot, profile, features, self.settings.thresholds)
+            confirmed = self.candidates.observe(
+                snapshot, proposals, features, profile.atr14, self.settings.thresholds,
+            )
             self.rolling.record(snapshot)
-            alert = evaluate(snapshot, profile, volume_5m, price_5m, self.settings.thresholds)
-            if alert and self.alerts.should_send(
-                alert,
-                self.settings.thresholds.cooldown_seconds,
-                self.settings.thresholds.realert_min_price_change_pct,
-            ):
-                candidates.append(alert)
+            candidates.extend(confirmed)
 
         ranked = sorted(
             candidates,
-            key=lambda alert: (severity_rank(alert.severity.value), alert.tod_rvol, alert.local_rvol or 0),
+            key=lambda alert: (alert.score, severity_rank(alert.severity.value), alert.tod_rvol),
             reverse=True,
         )
         if ranked:
             LOG.info(
                 "qualified candidates=%s",
                 ",".join(
-                    f"{alert.snapshot.symbol}:{alert.tod_rvol:.2f}x/"
+                    f"{alert.snapshot.symbol}:{alert.lane}/{alert.score:.0f}/"
+                    f"{alert.tod_rvol:.2f}x/"
                     f"{alert.price_change_5m_pct or 0:+.2f}%/"
                     f"{alert.speed_ratio or 0:.2f}speed"
                     for alert in ranked
                 ),
             )
         ranked = ranked[:self.settings.max_alerts_per_scan]
-        if ranked and not self.alerts.notification_ready(
-            ranked[0].snapshot.timestamp,
-            self.settings.min_alert_interval_seconds,
-        ):
-            LOG.info("alert throttled symbol=%s", ranked[0].snapshot.symbol)
-            ranked = []
         for alert in ranked:
             if self.notifier.send(alert):
                 self.alerts.mark(alert)
+                self.candidates.mark_alerted(alert)
+        self.candidates.save()
         LOG.info("scan complete snapshots=%s qualified=%s sent=%s", len(snapshots), len(candidates), len(ranked))
 
     def refresh_profile(self, symbol: str, today) -> object | None:

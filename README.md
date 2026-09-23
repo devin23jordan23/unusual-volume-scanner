@@ -1,17 +1,15 @@
 # Unusual Volume Scanner
 
-Standalone Schwab-powered scanner for stocks trading unusually high volume for the current time of day **and** producing meaningful price expansion. Alerts are sent to a dedicated Discord webhook.
+Standalone Schwab-powered scanner for fresh volume ignition and sustained directional price expansion. Alerts are sent to a dedicated Discord webhook.
 
 ## Signal Model
 
-The scanner builds a 30-session, one-minute profile for every symbol and calculates:
+The scanner runs two parallel detection lanes:
 
-- Time-of-day RVOL: today's regular-session volume divided by normal cumulative volume through the same minute.
-- Local 5-minute RVOL: the latest five-minute volume divided by normal volume during those same clock minutes.
-- ATR progress: distance from today's open divided by 14-session ATR.
-- Five-minute price speed: current five-minute movement divided by normal same-time movement.
+- Volume ignition combines time-of-day and local RVOL, dollar liquidity, and fresh ATR-normalized movement.
+- Directional expansion combines 5/10/15-minute ATR displacement, consecutive directional bars, path efficiency, observed VWAP, active range-edge position, and new-high/new-low recency. Volume improves this lane's score but is not required.
 
-Volume is not enough by itself. An alert requires unusual participation, meaningful price movement, and sufficient dollar liquidity.
+The first impulse arms a short-lived candidate. Continued direction confirms it, sends one alert, and keeps the move active without repeating. A symbol only rearms after consolidation and a meaningful new level break, or after a meaningful reversal.
 
 ## Local Setup
 
@@ -42,7 +40,7 @@ For browser authorization, temporarily set `SCHWAB_AUTH_SETUP_KEY`, deploy with 
 
 ## Tuning
 
-See `.env.example` for all `UVS_*` controls. Defaults use SMB-style stock-in-play tiers of `2x`, `3x`, and `5x` time-of-day RVOL, while requiring ATR or five-minute price-speed confirmation.
+See `.env.example` for all `UVS_*` controls. Stale volume-only conditions cannot alert after the opening window, while fresh directional expansion can alert without elevated RVOL.
 
 ## Tests
 

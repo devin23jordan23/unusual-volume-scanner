@@ -69,6 +69,26 @@ class VolumeProfile:
         return value if value > 0 else None
 
 
+@dataclass(frozen=True)
+class MovementFeatures:
+    volume_5m: int | None
+    change_5m_pct: float | None
+    change_10m_pct: float | None
+    change_15m_pct: float | None
+    move_5m_atr: float | None
+    move_10m_atr: float | None
+    move_15m_atr: float | None
+    efficiency_5m: float | None
+    efficiency_10m: float | None
+    directional_bars: int
+    directional_share: float | None
+    vwap: float | None
+    vwap_aligned: bool
+    vwap_crossed: bool
+    new_extreme_age_seconds: float | None
+    fresh_level_break: bool
+
+
 class Severity(str, Enum):
     WATCH = "WATCH"
     IN_PLAY = "IN PLAY"
@@ -92,3 +112,9 @@ class VolumeAlert:
     move_5m_atr: float | None
     atr_progress: float | None
     range_atr: float | None
+    lane: str = "VOLUME_IGNITION"
+    score: float = 0.0
+    confirmation_ready: bool = False
+    efficiency: float | None = None
+    directional_bars: int = 0
+    vwap: float | None = None

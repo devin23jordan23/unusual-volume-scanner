@@ -7,13 +7,12 @@ from zoneinfo import ZoneInfo
 
 from app.config import DEFAULT_UNIVERSE, Settings, Thresholds
 from app.discord import DiscordNotifier
-from app.models import Candle, Severity, StockSnapshot
+from app.models import Candle, MovementFeatures, Severity, StockSnapshot
 from app.profiles import build_profile
-from app.rules import evaluate
-from app.state import AlertState
+from app.rules import evaluate, evaluate_lanes
+from app.state import AlertState, CandidateBook
 
-with patch.dict("sys.modules", {"requests": Mock()}):
-    from app.schwab import SchwabClient
+from app.schwab import SchwabClient
 
 TZ = ZoneInfo("America/New_York")
 
@@ -70,15 +69,14 @@ class VolumeScannerTests(unittest.TestCase):
         self.assertTrue({"JPM", "BAC"}.issubset(DEFAULT_UNIVERSE))
         self.assertTrue({"C", "GS", "MS", "SCHW", "AXP"}.isdisjoint(DEFAULT_UNIVERSE))
 
-    def test_global_notification_interval(self):
+    def test_global_notification_interval_is_disabled(self):
         stamp = datetime(2026, 9, 22, 10, 0, tzinfo=TZ)
         state = AlertState("/path/that/does/not/exist")
         interval = Settings().min_alert_interval_seconds
-        self.assertEqual(interval, 300)
+        self.assertEqual(interval, 0)
         self.assertTrue(state.notification_ready(stamp, interval))
         state.sent["COIN"] = {"sent_at": stamp.timestamp(), "severity": "HIGH"}
-        self.assertFalse(state.notification_ready(stamp + timedelta(seconds=299), interval))
-        self.assertTrue(state.notification_ready(stamp + timedelta(seconds=300), interval))
+        self.assertTrue(state.notification_ready(stamp, interval))
 
     def test_unauthorized_worker_does_not_replace_newer_tokens(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {}, clear=True):
@@ -175,6 +173,49 @@ class VolumeScannerTests(unittest.TestCase):
         payload = DiscordNotifier("").payload(alert)
         names = {item["name"] for item in payload["embeds"][0]["fields"]}
         self.assertEqual(names, {"Price", "Time-of-Day RVOL", "ATR Progress"})
+
+    def test_directional_expansion_does_not_require_high_local_rvol(self):
+        stamp = datetime(2026, 9, 23, 9, 57, tzinfo=TZ)
+        snapshot = StockSnapshot("MRNA", 190.62, 2_000_000, stamp, 183.405, 182, 191.88, 182.6)
+        profile = replace(self.profile, atr14=11.35, minute_volume=tuple([30_000] * 390))
+        features = MovementFeatures(
+            150_000, 0.23, 1.04, 2.79, 0.04, 0.18, 0.47,
+            0.72, 0.78, 4, 0.75, 186.0, True, False, 60, True,
+        )
+        alerts = evaluate_lanes(snapshot, profile, features, Thresholds(min_5m_dollar_volume=1))
+        directional = [item for item in alerts if item.lane == "DIRECTIONAL_EXPANSION"]
+        self.assertEqual(len(directional), 1)
+        self.assertTrue(directional[0].confirmation_ready)
+
+    def test_directional_chop_is_rejected(self):
+        stamp = datetime(2026, 9, 23, 11, 30, tzinfo=TZ)
+        snapshot = StockSnapshot("SHOP", 149.04, 9_000_000, stamp, 144.55, 143, 150, 143)
+        features = MovementFeatures(
+            1_000_000, 0.7, 1.1, 1.4, 0.16, 0.25, 0.32,
+            0.25, 0.30, 1, 0.50, 148.5, True, False, 4_000, False,
+        )
+        alerts = evaluate_lanes(snapshot, replace(self.profile, atr14=6.32), features, Thresholds(min_5m_dollar_volume=1))
+        self.assertFalse([item for item in alerts if item.lane == "DIRECTIONAL_EXPANSION"])
+
+    def test_candidate_confirms_once_and_does_not_repeat(self):
+        stamp = datetime(2026, 9, 23, 9, 44, tzinfo=TZ)
+        snapshot = StockSnapshot("META", 761, 2_000_000, stamp, 747, 740, 762, 739)
+        alert = evaluate(snapshot, replace(self.profile, atr14=10), 500_000, 1.0, Thresholds(min_5m_dollar_volume=1))
+        alert = replace(alert, lane="DIRECTIONAL_EXPANSION", score=90, confirmation_ready=True)
+        features = MovementFeatures(500_000, 1, 2, 3, .2, .3, .4, .8, .8, 4, .8, 755, True, True, 30, True)
+        with tempfile.TemporaryDirectory() as directory:
+            book = CandidateBook(f"{directory}/candidates.json")
+            thresholds = Thresholds(candidate_confirm_seconds=120)
+            self.assertEqual(book.observe(snapshot, [alert], features, 10, thresholds), [])
+            middle_snapshot = replace(snapshot, timestamp=stamp + timedelta(seconds=60), price=762)
+            middle_alert = replace(alert, snapshot=middle_snapshot)
+            self.assertEqual(book.observe(middle_snapshot, [middle_alert], features, 10, thresholds), [])
+            later_snapshot = replace(snapshot, timestamp=stamp + timedelta(seconds=120), price=763)
+            later_alert = replace(alert, snapshot=later_snapshot)
+            ready = book.observe(later_snapshot, [later_alert], features, 10, thresholds)
+            self.assertEqual(len(ready), 1)
+            book.mark_alerted(ready[0])
+            self.assertEqual(book.observe(replace(later_snapshot, timestamp=stamp + timedelta(seconds=180)), [later_alert], features, 10, thresholds), [])
 
 
 if __name__ == "__main__":

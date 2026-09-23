@@ -35,6 +35,18 @@ class Thresholds:
     min_speed_ratio: float = 2.0
     realert_min_price_change_pct: float = 1.0
     cooldown_seconds: int = 600
+    candidate_expiry_seconds: int = 300
+    candidate_confirm_seconds: int = 120
+    min_directional_efficiency: float = 0.55
+    min_directional_bars: int = 3
+    min_directional_5m_atr: float = 0.12
+    min_directional_10m_atr: float = 0.20
+    min_directional_15m_atr: float = 0.28
+    directional_edge_position: float = 0.70
+    max_extreme_age_seconds: int = 300
+    consolidation_retrace_atr: float = 0.15
+    rearm_break_atr: float = 0.10
+    reversal_rearm_atr: float = 0.20
 
 
 @dataclass(frozen=True)
@@ -45,8 +57,8 @@ class Settings:
     discord_webhook: str = ""
     log_level: str = "INFO"
     profile_sessions: int = 30
-    max_alerts_per_scan: int = 1
-    min_alert_interval_seconds: int = 300
+    max_alerts_per_scan: int = 3
+    min_alert_interval_seconds: int = 0
     universe: set[str] = field(default_factory=lambda: set(DEFAULT_UNIVERSE))
     thresholds: Thresholds = field(default_factory=Thresholds)
 
@@ -61,8 +73,8 @@ def load_settings() -> Settings:
         discord_webhook=os.getenv("DISCORD_UNUSUAL_VOLUME_WEBHOOK", ""),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         profile_sessions=int(os.getenv("UVS_PROFILE_SESSIONS", "30")),
-        max_alerts_per_scan=int(os.getenv("UVS_MAX_ALERTS_PER_SCAN", "1")),
-        min_alert_interval_seconds=int(os.getenv("UVS_MIN_ALERT_INTERVAL_SECONDS", "300")),
+        max_alerts_per_scan=int(os.getenv("UVS_MAX_ALERTS_PER_SCAN", "3")),
+        min_alert_interval_seconds=int(os.getenv("UVS_MIN_ALERT_INTERVAL_SECONDS", "0")),
         universe=universe | extra,
         thresholds=Thresholds(
             min_price=float(os.getenv("UVS_MIN_PRICE", "5")),
@@ -80,6 +92,18 @@ def load_settings() -> Settings:
             min_speed_ratio=float(os.getenv("UVS_MIN_SPEED_RATIO", "2.0")),
             realert_min_price_change_pct=float(os.getenv("UVS_REALERT_MIN_PRICE_CHANGE_PCT", "1.0")),
             cooldown_seconds=int(os.getenv("UVS_COOLDOWN_SECONDS", "600")),
+            candidate_expiry_seconds=int(os.getenv("UVS_CANDIDATE_EXPIRY_SECONDS", "300")),
+            candidate_confirm_seconds=int(os.getenv("UVS_CANDIDATE_CONFIRM_SECONDS", "120")),
+            min_directional_efficiency=float(os.getenv("UVS_MIN_DIRECTIONAL_EFFICIENCY", "0.55")),
+            min_directional_bars=int(os.getenv("UVS_MIN_DIRECTIONAL_BARS", "3")),
+            min_directional_5m_atr=float(os.getenv("UVS_MIN_DIRECTIONAL_5M_ATR", "0.12")),
+            min_directional_10m_atr=float(os.getenv("UVS_MIN_DIRECTIONAL_10M_ATR", "0.20")),
+            min_directional_15m_atr=float(os.getenv("UVS_MIN_DIRECTIONAL_15M_ATR", "0.28")),
+            directional_edge_position=float(os.getenv("UVS_DIRECTIONAL_EDGE_POSITION", "0.70")),
+            max_extreme_age_seconds=int(os.getenv("UVS_MAX_EXTREME_AGE_SECONDS", "300")),
+            consolidation_retrace_atr=float(os.getenv("UVS_CONSOLIDATION_RETRACE_ATR", "0.15")),
+            rearm_break_atr=float(os.getenv("UVS_REARM_BREAK_ATR", "0.10")),
+            reversal_rearm_atr=float(os.getenv("UVS_REVERSAL_REARM_ATR", "0.20")),
         ),
     )
 
