@@ -9,7 +9,7 @@ from .config import Settings
 from .discord import DiscordNotifier
 from .market_hours import is_market_open
 from .models import StockSnapshot
-from .profiles import ProfileCache, build_profile
+from .profiles import ProfileCache, build_profile, minute_index
 from .rules import evaluate_lanes
 from .schwab import SchwabClient
 from .state import AlertState, CandidateBook, RollingStockState, severity_rank
@@ -87,8 +87,11 @@ class VolumeScanner:
     def bootstrap_mover(self, snapshot: StockSnapshot, profile) -> None:
         if snapshot.symbol in self.bootstrapped:
             return
-        self.bootstrapped.add(snapshot.symbol)
-        if self.rolling.snapshots.get(snapshot.symbol) or profile.atr14 <= 0 or snapshot.open_price is None:
+        history = self.rolling.snapshots.get(snapshot.symbol)
+        if history and snapshot.timestamp.timestamp() - history[0].timestamp.timestamp() >= 900:
+            self.bootstrapped.add(snapshot.symbol)
+            return
+        if profile.atr14 <= 0 or snapshot.open_price is None:
             return
         displacement = abs(snapshot.price - snapshot.open_price) / profile.atr14
         range_atr = 0.0
@@ -96,13 +99,19 @@ class VolumeScanner:
             range_atr = (snapshot.high_price - snapshot.low_price) / profile.atr14
         edge = snapshot.range_position
         at_edge = edge is not None and (edge >= 0.75 or edge <= 0.25)
-        if displacement < 0.25 and not (range_atr >= 0.50 and at_edge):
+        idx = minute_index(snapshot.timestamp)
+        expected = profile.expected_cumulative(idx, max(snapshot.timestamp.second / 60, 0.10)) if idx is not None else 0
+        tod_rvol = snapshot.volume / expected if expected > 0 else 0
+        elevated_volume = tod_rvol >= self.settings.thresholds.min_tod_rvol
+        if displacement < 0.25 and not (range_atr >= 0.50 and at_edge) and not elevated_volume:
             return
         try:
             candles = self.client.price_history(snapshot.symbol, calendar_days=2)
         except Exception as exc:
             LOG.warning("intraday bootstrap failed for %s: %s", snapshot.symbol, exc)
             return
+        self.bootstrapped.add(snapshot.symbol)
+        self.rolling.snapshots.pop(snapshot.symbol, None)
         cumulative = 0
         high = None
         low = None

@@ -10,7 +10,8 @@ from app.discord import DiscordNotifier
 from app.models import Candle, MovementFeatures, Severity, StockSnapshot
 from app.profiles import build_profile
 from app.rules import evaluate, evaluate_lanes
-from app.state import AlertState, CandidateBook
+from app.scanner import VolumeScanner
+from app.state import AlertState, CandidateBook, RollingStockState
 
 from app.schwab import SchwabClient
 
@@ -216,6 +217,52 @@ class VolumeScannerTests(unittest.TestCase):
             self.assertEqual(len(ready), 1)
             book.mark_alerted(ready[0])
             self.assertEqual(book.observe(replace(later_snapshot, timestamp=stamp + timedelta(seconds=180)), [later_alert], features, 10, thresholds), [])
+
+    def test_elevated_tod_rvol_bootstraps_transitioning_mover(self):
+        scanner = VolumeScanner.__new__(VolumeScanner)
+        scanner.settings = Settings()
+        scanner.client = Mock()
+        scanner.rolling = RollingStockState()
+        scanner.bootstrapped = set()
+        stamp = datetime(2026, 9, 18, 10, 12, 30, tzinfo=TZ)
+        profile = replace(
+            self.profile,
+            atr14=27.0,
+            minute_volume=tuple([100_000] * 390),
+        )
+        snapshot = StockSnapshot(
+            "META", 750, 9_000_000, stamp, 747.6, 736.6, 764, 739,
+        )
+        scanner.client.price_history.return_value = [
+            Candle(stamp - timedelta(minutes=15), 751, 752, 750, 751, 200_000),
+            Candle(stamp - timedelta(minutes=14), 751, 752, 749, 750, 180_000),
+        ]
+
+        scanner.bootstrap_mover(snapshot, profile)
+
+        scanner.client.price_history.assert_called_once_with("META", calendar_days=2)
+        self.assertIn("META", scanner.bootstrapped)
+        self.assertEqual(len(scanner.rolling.snapshots["META"]), 2)
+
+    def test_inactive_symbol_can_be_reconsidered_for_bootstrap(self):
+        scanner = VolumeScanner.__new__(VolumeScanner)
+        scanner.settings = Settings()
+        scanner.client = Mock()
+        scanner.rolling = RollingStockState()
+        scanner.bootstrapped = set()
+        stamp = datetime(2026, 9, 18, 10, 12, 30, tzinfo=TZ)
+        profile = replace(self.profile, atr14=27.0, minute_volume=tuple([100_000] * 390))
+        quiet = StockSnapshot("META", 748, 1_000_000, stamp, 747.6, 736.6, 750, 746)
+        active = replace(quiet, price=741, volume=9_000_000, timestamp=stamp + timedelta(seconds=30), low_price=740)
+        scanner.client.price_history.return_value = [
+            Candle(stamp - timedelta(minutes=15), 751, 752, 750, 751, 200_000),
+        ]
+
+        scanner.bootstrap_mover(quiet, profile)
+        scanner.bootstrap_mover(active, profile)
+
+        scanner.client.price_history.assert_called_once_with("META", calendar_days=2)
+        self.assertIn("META", scanner.bootstrapped)
 
 
 if __name__ == "__main__":
