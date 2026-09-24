@@ -135,6 +135,7 @@ class CandidateBook:
         if record is None:
             if best:
                 self._arm(best)
+                return [best] if mature_directional(best, thresholds) else []
             return []
         if record.get("status") == "ARMED":
             armed_at = float(record.get("armed_at", 0))
@@ -143,6 +144,7 @@ class CandidateBook:
                 self.dirty = True
                 if best:
                     self._arm(best)
+                    return [best] if mature_directional(best, thresholds) else []
                 return []
             if not best:
                 return []
@@ -174,7 +176,13 @@ class CandidateBook:
         same = best if best and best.direction == record.get("direction") else None
         rearm_level = float(record.get("rearm_level", prior_extreme))
         break_atr = direction * (snapshot.price - rearm_level) / atr if atr > 0 else 0
-        if record.get("consolidated_at") and same and break_atr >= thresholds.rearm_break_atr:
+        strong_fresh_break = bool(
+            same and same.confirmation_ready and features.fresh_level_break
+            and break_atr >= thresholds.rearm_break_atr * 0.4
+        )
+        if record.get("consolidated_at") and same and (
+            break_atr >= thresholds.rearm_break_atr or strong_fresh_break
+        ):
             self._arm(same)
             return [same] if same.confirmation_ready else []
         return []
@@ -209,6 +217,14 @@ class CandidateBook:
 
 def severity_rank(value: str) -> int:
     return {"WATCH": 1, "IN PLAY": 2, "HIGH": 3, "EXTREME": 4}.get(value, 0)
+
+
+def mature_directional(alert: VolumeAlert, thresholds: Thresholds) -> bool:
+    return bool(
+        alert.lane == "DIRECTIONAL_EXPANSION"
+        and alert.confirmation_ready
+        and alert.directional_bars >= max(6, thresholds.min_directional_bars * 2)
+    )
 
 
 def window_change(history: list[StockSnapshot], seconds: int) -> float | None:

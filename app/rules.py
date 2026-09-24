@@ -120,6 +120,14 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
         or (features.move_15m_atr or 0) >= thresholds.min_directional_15m_atr
     )
     efficiency = (features.efficiency_5m if opening else features.efficiency_10m) or 0
+    persistent_trend = (
+        not opening
+        and (features.move_15m_atr or 0) >= thresholds.min_directional_15m_atr * 0.65
+        and efficiency >= max(0.75, thresholds.min_directional_efficiency)
+        and features.directional_bars >= max(6, thresholds.min_directional_bars * 2)
+        and (features.directional_share or 0) >= 0.80
+    )
+    horizon_ok = horizon_ok or persistent_trend
     position = snapshot.range_position
     edge_ok = position is not None and (
         position >= thresholds.directional_edge_position if direction_sign > 0
@@ -134,7 +142,7 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
     fresh_impulse_threshold = opening_move_threshold if opening else thresholds.min_directional_5m_atr * 0.75
     fresh_impulse = (features.move_5m_atr or 0) >= fresh_impulse_threshold
     if not (
-        (fresh_impulse or sustained_move)
+        (fresh_impulse or sustained_move or persistent_trend)
         and horizon_ok
         and efficiency >= thresholds.min_directional_efficiency * 0.85
         and features.directional_bars >= arm_bars
@@ -158,7 +166,7 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
         speed = abs(features.change_5m_pct) / normal_move
     score = directional_score(features, tod_rvol, local_rvol, thresholds)
     confirmation_ready = (
-        ((features.move_5m_atr or 0) >= thresholds.min_directional_5m_atr or sustained_move)
+        ((features.move_5m_atr or 0) >= thresholds.min_directional_5m_atr or sustained_move or persistent_trend)
         and efficiency >= thresholds.min_directional_efficiency
         and features.directional_bars >= thresholds.min_directional_bars
         and (features.directional_share or 0) >= 0.65

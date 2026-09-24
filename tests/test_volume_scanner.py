@@ -236,6 +236,21 @@ class VolumeScannerTests(unittest.TestCase):
         alerts = evaluate_lanes(snapshot, replace(self.profile, atr14=6.32), features, Thresholds(min_5m_dollar_volume=1))
         self.assertFalse([item for item in alerts if item.lane == "DIRECTIONAL_EXPANSION"])
 
+    def test_persistent_trend_qualifies_without_fast_atr_burst(self):
+        stamp = datetime(2026, 9, 24, 14, 58, 59, tzinfo=TZ)
+        snapshot = StockSnapshot("AMD", 628.69, 8_000_000, stamp, 600.27, 614.92, 628.80, 599.24)
+        profile = replace(self.profile, atr14=25.99, minute_volume=tuple([40_000] * 390))
+        features = MovementFeatures(
+            500_000, 0.38, 0.64, 0.82, 0.09, 0.15, 0.20,
+            0.95, 1.0, 10, 1.0, 620, True, False, 30, True,
+        )
+
+        alerts = evaluate_lanes(snapshot, profile, features, Thresholds(min_5m_dollar_volume=1))
+
+        directional = [item for item in alerts if item.lane == "DIRECTIONAL_EXPANSION"]
+        self.assertEqual(len(directional), 1)
+        self.assertTrue(directional[0].confirmation_ready)
+
     def test_candidate_confirms_once_and_does_not_repeat(self):
         stamp = datetime(2026, 9, 23, 9, 44, tzinfo=TZ)
         snapshot = StockSnapshot("META", 761, 2_000_000, stamp, 747, 740, 762, 739)
@@ -255,6 +270,22 @@ class VolumeScannerTests(unittest.TestCase):
             self.assertEqual(len(ready), 1)
             book.mark_alerted(ready[0])
             self.assertEqual(book.observe(replace(later_snapshot, timestamp=stamp + timedelta(seconds=180)), [later_alert], features, 10, thresholds), [])
+
+    def test_mature_directional_candidate_alerts_immediately(self):
+        stamp = datetime(2026, 9, 24, 14, 58, 59, tzinfo=TZ)
+        snapshot = StockSnapshot("AMD", 628.69, 8_000_000, stamp, 600.27, 614.92, 628.80, 599.24)
+        profile = replace(self.profile, atr14=25.99, minute_volume=tuple([40_000] * 390))
+        features = MovementFeatures(500_000, .4, .6, .8, .1, .15, .2, .9, 1, 10, 1, 620, True, False, 30, True)
+        alert = [
+            item for item in evaluate_lanes(snapshot, profile, features, Thresholds(min_5m_dollar_volume=1))
+            if item.lane == "DIRECTIONAL_EXPANSION"
+        ][0]
+
+        with tempfile.TemporaryDirectory() as directory:
+            book = CandidateBook(f"{directory}/candidates.json")
+            ready = book.observe(snapshot, [alert], features, 25.99, Thresholds())
+
+            self.assertEqual(len(ready), 1)
 
     def test_active_candidate_realerts_after_consolidation_breakout(self):
         stamp = datetime(2026, 9, 24, 9, 33, tzinfo=TZ)
