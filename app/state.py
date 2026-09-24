@@ -170,10 +170,13 @@ class CandidateBook:
         if retrace_atr >= thresholds.consolidation_retrace_atr or quiet:
             if not record.get("consolidated_at"):
                 record["consolidated_at"] = now
+                record["rearm_level"] = prior_extreme
         same = best if best and best.direction == record.get("direction") else None
-        break_atr = direction * (snapshot.price - prior_extreme) / atr if atr > 0 else 0
+        rearm_level = float(record.get("rearm_level", prior_extreme))
+        break_atr = direction * (snapshot.price - rearm_level) / atr if atr > 0 else 0
         if record.get("consolidated_at") and same and break_atr >= thresholds.rearm_break_atr:
             self._arm(same)
+            return [same] if same.confirmation_ready else []
         return []
 
     def mark_alerted(self, alert: VolumeAlert) -> None:

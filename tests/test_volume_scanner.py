@@ -256,6 +256,37 @@ class VolumeScannerTests(unittest.TestCase):
             book.mark_alerted(ready[0])
             self.assertEqual(book.observe(replace(later_snapshot, timestamp=stamp + timedelta(seconds=180)), [later_alert], features, 10, thresholds), [])
 
+    def test_active_candidate_realerts_after_consolidation_breakout(self):
+        stamp = datetime(2026, 9, 24, 9, 33, tzinfo=TZ)
+        profile = replace(
+            self.profile,
+            atr14=15.6,
+            minute_volume=tuple([20_000] * 390),
+            move_5m_pct=tuple([0.10] * 390),
+        )
+        snapshot = StockSnapshot("NBIS", 240, 5_000_000, stamp, 230, 226, 240, 229)
+        alert = evaluate(snapshot, profile, 1_000_000, 2.0, Thresholds(min_5m_dollar_volume=1))
+        self.assertIsNotNone(alert)
+        alert = replace(alert, lane="DIRECTIONAL_EXPANSION", score=100, confirmation_ready=True)
+        moving = MovementFeatures(1_000_000, 2, 3, 4, .3, .4, .5, .8, .8, 4, .8, 238, True, True, 30, True)
+        pullback = replace(moving, move_5m_atr=.10, fresh_level_break=False)
+        thresholds = Thresholds(candidate_confirm_seconds=0, consolidation_retrace_atr=.15, rearm_break_atr=.10)
+
+        with tempfile.TemporaryDirectory() as directory:
+            book = CandidateBook(f"{directory}/candidates.json")
+            book.observe(snapshot, [alert], moving, profile.atr14, thresholds)
+            ready = book.observe(replace(snapshot, timestamp=stamp + timedelta(seconds=30)), [alert], moving, profile.atr14, thresholds)
+            book.mark_alerted(ready[0])
+            book.observe(replace(snapshot, price=242, timestamp=stamp + timedelta(minutes=1)), [], moving, profile.atr14, thresholds)
+            book.observe(replace(snapshot, price=238.5, timestamp=stamp + timedelta(minutes=2)), [], pullback, profile.atr14, thresholds)
+            breakout_snapshot = replace(snapshot, price=244, timestamp=stamp + timedelta(minutes=3))
+            breakout_alert = replace(alert, snapshot=breakout_snapshot)
+
+            breakout = book.observe(breakout_snapshot, [breakout_alert], moving, profile.atr14, thresholds)
+
+            self.assertEqual(len(breakout), 1)
+            self.assertEqual(breakout[0].snapshot.price, 244)
+
     def test_elevated_tod_rvol_bootstraps_transitioning_mover(self):
         scanner = VolumeScanner.__new__(VolumeScanner)
         scanner.settings = Settings()
