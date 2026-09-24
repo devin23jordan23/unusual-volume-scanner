@@ -109,11 +109,17 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
     if not direction_sign:
         return None
     direction_value = "BULLISH" if direction_sign > 0 else "BEARISH"
+    opening = idx < 10
+    opening_move_threshold = max(
+        thresholds.min_directional_5m_atr * 1.5,
+        thresholds.min_5m_atr_move,
+    )
     horizon_ok = (
-        (features.move_10m_atr or 0) >= thresholds.min_directional_10m_atr
+        (opening and (features.move_5m_atr or 0) >= opening_move_threshold)
+        or (features.move_10m_atr or 0) >= thresholds.min_directional_10m_atr
         or (features.move_15m_atr or 0) >= thresholds.min_directional_15m_atr
     )
-    efficiency = features.efficiency_10m or 0
+    efficiency = (features.efficiency_5m if opening else features.efficiency_10m) or 0
     position = snapshot.range_position
     edge_ok = position is not None and (
         position >= thresholds.directional_edge_position if direction_sign > 0
@@ -125,7 +131,8 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
     )
     arm_bars = max(2, thresholds.min_directional_bars - 1)
     sustained_move = (features.move_15m_atr or 0) >= thresholds.min_directional_15m_atr
-    fresh_impulse = (features.move_5m_atr or 0) >= thresholds.min_directional_5m_atr * 0.75
+    fresh_impulse_threshold = opening_move_threshold if opening else thresholds.min_directional_5m_atr * 0.75
+    fresh_impulse = (features.move_5m_atr or 0) >= fresh_impulse_threshold
     if not (
         (fresh_impulse or sustained_move)
         and horizon_ok

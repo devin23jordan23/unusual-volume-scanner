@@ -53,6 +53,8 @@ class RollingStockState:
         change_15m = window_change(history, 900)
         direction = sign(change_5m if change_5m not in (None, 0) else change_10m)
         bars, share = directional_path(history, direction, 600)
+        if share is None:
+            bars, share = directional_path(history, direction, 300)
         vwap, prior_vwap, prior_price = observed_vwap(history)
         aligned = bool(vwap is not None and direction and direction * (snapshot.price - vwap) > 0)
         crossed = bool(aligned and prior_vwap is not None and prior_price is not None and direction * (prior_price - prior_vwap) <= 0)

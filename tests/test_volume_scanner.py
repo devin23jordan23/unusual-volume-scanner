@@ -191,6 +191,41 @@ class VolumeScannerTests(unittest.TestCase):
         self.assertEqual(len(directional), 1)
         self.assertTrue(directional[0].confirmation_ready)
 
+    def test_opening_directional_expansion_does_not_require_rvol(self):
+        stamp = datetime(2026, 9, 24, 9, 37, 59, tzinfo=TZ)
+        snapshot = StockSnapshot("INTC", 123.13, 1_000_000, stamp, 120.61, 122.60, 123.20, 119.55)
+        profile = replace(self.profile, atr14=6.70, minute_volume=tuple([150_000] * 390))
+        features = MovementFeatures(
+            500_000, 1.55, None, None, 0.28, None, None,
+            0.90, None, 4, 0.80, 121.5, True, False, 30, True,
+        )
+
+        alerts = evaluate_lanes(snapshot, profile, features, Thresholds(min_5m_dollar_volume=1))
+
+        directional = [item for item in alerts if item.lane == "DIRECTIONAL_EXPANSION"]
+        self.assertEqual(len(directional), 1)
+        self.assertTrue(directional[0].confirmation_ready)
+
+    def test_opening_directional_bars_use_available_five_minute_path(self):
+        profile = replace(self.profile, atr14=6.70)
+        rolling = RollingStockState()
+        start = datetime(2026, 9, 24, 9, 30, 59, tzinfo=TZ)
+        prices = [120.16, 121.14, 121.25, 121.50, 121.80]
+        for offset, price in enumerate(prices):
+            rolling.record(StockSnapshot(
+                "INTC", price, 1_000_000 + offset * 100_000,
+                start + timedelta(minutes=offset), 120.61, 122.60, price, 119.55,
+            ))
+        snapshot = StockSnapshot(
+            "INTC", 122.17, 1_500_000, start + timedelta(minutes=5),
+            120.61, 122.60, 122.20, 119.55,
+        )
+
+        features = rolling.features(snapshot, profile)
+
+        self.assertGreaterEqual(features.directional_bars, 3)
+        self.assertGreaterEqual(features.directional_share or 0, 0.75)
+
     def test_directional_chop_is_rejected(self):
         stamp = datetime(2026, 9, 23, 11, 30, tzinfo=TZ)
         snapshot = StockSnapshot("SHOP", 149.04, 9_000_000, stamp, 144.55, 143, 150, 143)
