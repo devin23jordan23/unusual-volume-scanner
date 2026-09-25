@@ -40,8 +40,8 @@ For browser authorization, temporarily set `SCHWAB_AUTH_SETUP_KEY`, deploy with 
 
 ## Tuning
 
-See `.env.example` for all `UVS_*` controls. Stale volume-only conditions cannot alert after the opening window, while fresh directional expansion can alert without elevated RVOL.
-`UVS_MAX_ALERTS_PER_SCAN=0` means unlimited: every confirmed candidate in a scan is sent.
+See `.env.example` for all `UVS_*` controls. The core universe is maintained in `app/config.py`; `UVS_IN_PLAY` can add temporary names without allowing stale Railway variables to remove core symbols. Stale volume-only conditions cannot alert after the opening window, while fresh directional expansion can alert without elevated RVOL.
+Confirmed alerts are unlimited and cannot be capped by a deployment variable.
 
 ## Tests
 

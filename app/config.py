@@ -64,7 +64,6 @@ class Settings:
 
 
 def load_settings() -> Settings:
-    universe = csv_set(os.getenv("UVS_UNIVERSE", ",".join(sorted(DEFAULT_UNIVERSE))))
     extra = csv_set(os.getenv("UVS_IN_PLAY", ""))
     return Settings(
         timezone=os.getenv("SCANNER_TIMEZONE", "America/New_York"),
@@ -73,9 +72,9 @@ def load_settings() -> Settings:
         discord_webhook=os.getenv("DISCORD_UNUSUAL_VOLUME_WEBHOOK", ""),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         profile_sessions=int(os.getenv("UVS_PROFILE_SESSIONS", "30")),
-        max_alerts_per_scan=int(os.getenv("UVS_MAX_ALERTS_PER_SCAN", "0")),
+        max_alerts_per_scan=0,
         min_alert_interval_seconds=int(os.getenv("UVS_MIN_ALERT_INTERVAL_SECONDS", "0")),
-        universe=universe | extra,
+        universe=set(DEFAULT_UNIVERSE) | extra,
         thresholds=Thresholds(
             min_price=float(os.getenv("UVS_MIN_PRICE", "5")),
             max_price=float(os.getenv("UVS_MAX_PRICE", "10000")),

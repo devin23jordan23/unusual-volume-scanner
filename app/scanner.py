@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from .auth_server import start_auth_server
 from .config import Settings
 from .discord import DiscordNotifier
-from .market_hours import is_market_open
+from .market_hours import is_market_open, is_premarket
 from .models import StockSnapshot
 from .profiles import ProfileCache, build_profile, minute_index
 from .rules import evaluate_lanes
@@ -28,6 +28,7 @@ class VolumeScanner:
         self.alerts = AlertState(os.path.join(settings.data_dir, "volume_alert_state.json"))
         self.candidates = CandidateBook(os.path.join(settings.data_dir, "volume_candidate_state.json"))
         self.bootstrapped: set[str] = set()
+        self.prewarmed_on = None
 
     def run(self) -> None:
         LOG.info("volume scanner started universe=%s", ",".join(sorted(self.settings.universe)))
@@ -35,11 +36,28 @@ class VolumeScanner:
             try:
                 if is_market_open(self.settings.timezone):
                     self.run_once()
+                elif is_premarket(self.settings.timezone):
+                    self.prewarm_profiles()
                 else:
                     LOG.info("market closed; waiting")
             except Exception:
                 LOG.exception("volume scan failed")
-            time.sleep(self.settings.poll_seconds if is_market_open(self.settings.timezone) else min(self.settings.poll_seconds * 5, 300))
+            active_soon = is_market_open(self.settings.timezone) or is_premarket(self.settings.timezone)
+            time.sleep(self.settings.poll_seconds if active_soon else min(self.settings.poll_seconds * 5, 300))
+
+    def prewarm_profiles(self) -> None:
+        today = datetime.now(ZoneInfo(self.settings.timezone)).date()
+        if self.prewarmed_on == today:
+            return
+        self.prewarmed_on = today
+        refreshed = 0
+        for symbol in sorted(self.settings.universe):
+            if self.profiles.fresh(symbol, today):
+                continue
+            profile = self.refresh_profile(symbol, today)
+            if profile and self.profiles.fresh(symbol, today):
+                refreshed += 1
+        LOG.info("premarket profile warm-up complete refreshed=%s universe=%s", refreshed, len(self.settings.universe))
 
     def run_once(self) -> None:
         today = datetime.now(ZoneInfo(self.settings.timezone)).date()

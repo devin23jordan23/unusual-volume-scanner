@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta
 from unittest.mock import Mock, patch
 from zoneinfo import ZoneInfo
 
-from app.config import DEFAULT_UNIVERSE, Settings, Thresholds
+from app.config import DEFAULT_UNIVERSE, Settings, Thresholds, load_settings
 from app.discord import DiscordNotifier
 from app.models import Candle, MovementFeatures, Severity, StockSnapshot, VolumeAlert
 from app.profiles import build_profile
@@ -81,6 +81,18 @@ class VolumeScannerTests(unittest.TestCase):
 
     def test_alert_batch_is_unlimited_by_default(self):
         self.assertEqual(Settings().max_alerts_per_scan, 0)
+
+    def test_stale_railway_variables_cannot_remove_names_or_cap_alerts(self):
+        with patch.dict("os.environ", {
+            "UVS_UNIVERSE": "SHOP",
+            "UVS_IN_PLAY": "XYZ",
+            "UVS_MAX_ALERTS_PER_SCAN": "3",
+        }, clear=True):
+            settings = load_settings()
+
+        self.assertIn("QCOM", settings.universe)
+        self.assertIn("XYZ", settings.universe)
+        self.assertEqual(settings.max_alerts_per_scan, 0)
 
     def test_unauthorized_worker_does_not_replace_newer_tokens(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {}, clear=True):
@@ -267,6 +279,39 @@ class VolumeScannerTests(unittest.TestCase):
         self.assertTrue(directional[0].confirmation_ready)
         self.assertIn("fast liquid impulse", directional[0].reasons)
 
+    def test_qcom_opening_drive_releases_an_alert(self):
+        profile = replace(
+            self.profile,
+            symbol="QCOM",
+            atr14=9.30,
+            minute_volume=tuple([100_000] * 390),
+            move_5m_pct=tuple([0.25] * 390),
+        )
+        prices = [195.42, 195.725, 195.28, 195.325, 196.25, 197.10, 198.3395, 198.5046]
+        rolling = RollingStockState()
+        thresholds = Thresholds()
+
+        with tempfile.TemporaryDirectory() as directory:
+            book = CandidateBook(f"{directory}/candidates.json")
+            ready = []
+            high = 0.0
+            low = float("inf")
+            for offset, price in enumerate(prices):
+                stamp = datetime(2026, 9, 25, 9, 30, tzinfo=TZ) + timedelta(minutes=offset)
+                high = max(high, price)
+                low = min(low, price)
+                snapshot = StockSnapshot(
+                    "QCOM", price, 400_000 + offset * 200_000, stamp,
+                    prices[0], 194.26, high, low,
+                )
+                features = rolling.features(snapshot, profile)
+                proposals = evaluate_lanes(snapshot, profile, features, thresholds)
+                ready.extend(book.observe(snapshot, proposals, features, profile.atr14, thresholds))
+                rolling.record(snapshot)
+
+        self.assertTrue(ready)
+        self.assertEqual(ready[0].snapshot.timestamp.time(), datetime(2026, 9, 25, 9, 37).time())
+
     def test_fast_impulse_still_requires_meaningful_liquidity(self):
         stamp = datetime(2026, 9, 24, 12, 17, tzinfo=TZ)
         snapshot = StockSnapshot("SMCI", 40.87, 200_000, stamp, 40.44, 41.43, 41.60, 39.85)
@@ -413,6 +458,21 @@ class VolumeScannerTests(unittest.TestCase):
 
         scanner.client.price_history.assert_called_once_with("META", calendar_days=2)
         self.assertIn("META", scanner.bootstrapped)
+
+    def test_premarket_profile_warmup_runs_once_per_session(self):
+        scanner = VolumeScanner.__new__(VolumeScanner)
+        scanner.settings = Settings(universe={"QCOM", "SMCI"})
+        scanner.profiles = Mock()
+        scanner.profiles.fresh.return_value = False
+        scanner.refresh_profile = Mock(side_effect=lambda symbol, today: object())
+        scanner.prewarmed_on = None
+
+        with patch("app.scanner.datetime") as current:
+            current.now.return_value.date.return_value = self.today
+            scanner.prewarm_profiles()
+            scanner.prewarm_profiles()
+
+        self.assertEqual(scanner.refresh_profile.call_count, 2)
 
 
 if __name__ == "__main__":
