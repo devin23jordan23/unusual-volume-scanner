@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 from app.config import DEFAULT_UNIVERSE, Settings, Thresholds
 from app.discord import DiscordNotifier
-from app.models import Candle, MovementFeatures, Severity, StockSnapshot
+from app.models import Candle, MovementFeatures, Severity, StockSnapshot, VolumeAlert
 from app.profiles import build_profile
 from app.rules import evaluate, evaluate_lanes
 from app.scanner import VolumeScanner
@@ -251,6 +251,35 @@ class VolumeScannerTests(unittest.TestCase):
         self.assertEqual(len(directional), 1)
         self.assertTrue(directional[0].confirmation_ready)
 
+    def test_fast_liquid_impulse_does_not_require_fresh_daily_high(self):
+        stamp = datetime(2026, 9, 24, 12, 17, tzinfo=TZ)
+        snapshot = StockSnapshot("SMCI", 40.87, 12_000_000, stamp, 40.44, 41.43, 41.60, 39.85)
+        profile = replace(self.profile, atr14=2.38, minute_volume=tuple([180_000] * 390))
+        features = MovementFeatures(
+            400_000, 1.73, 1.00, 1.00, 0.29, 0.17, 0.17,
+            1.0, 0.40, 6, 0.89, 40.40, True, False, 3_600, False,
+        )
+
+        alerts = evaluate_lanes(snapshot, profile, features, Thresholds())
+
+        directional = [item for item in alerts if item.lane == "DIRECTIONAL_EXPANSION"]
+        self.assertEqual(len(directional), 1)
+        self.assertTrue(directional[0].confirmation_ready)
+        self.assertIn("fast liquid impulse", directional[0].reasons)
+
+    def test_fast_impulse_still_requires_meaningful_liquidity(self):
+        stamp = datetime(2026, 9, 24, 12, 17, tzinfo=TZ)
+        snapshot = StockSnapshot("SMCI", 40.87, 200_000, stamp, 40.44, 41.43, 41.60, 39.85)
+        profile = replace(self.profile, atr14=2.38, minute_volume=tuple([5_000] * 390))
+        features = MovementFeatures(
+            20_000, 1.73, 1.80, 1.90, 0.29, 0.30, 0.34,
+            1.0, 0.82, 6, 0.89, 40.40, True, False, 3_600, False,
+        )
+
+        alerts = evaluate_lanes(snapshot, profile, features, Thresholds())
+
+        self.assertFalse([item for item in alerts if item.lane == "DIRECTIONAL_EXPANSION"])
+
     def test_candidate_confirms_once_and_does_not_repeat(self):
         stamp = datetime(2026, 9, 23, 9, 44, tzinfo=TZ)
         snapshot = StockSnapshot("META", 761, 2_000_000, stamp, 747, 740, 762, 739)
@@ -284,6 +313,27 @@ class VolumeScannerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             book = CandidateBook(f"{directory}/candidates.json")
             ready = book.observe(snapshot, [alert], features, 25.99, Thresholds())
+
+            self.assertEqual(len(ready), 1)
+
+    def test_armed_candidate_releases_when_directional_move_matures(self):
+        stamp = datetime(2026, 9, 24, 12, 16, tzinfo=TZ)
+        snapshot = StockSnapshot("SMCI", 40.81, 12_000_000, stamp, 40.44, 41.43, 41.60, 39.85)
+        alert = VolumeAlert(
+            snapshot, Severity.EXTREME, "BULLISH", "DIRECTIONAL EXPANSION", (),
+            0.70, 1.10, 400_000, 16_000_000, 1.62, 3.0, .27, .16, .74,
+            lane="DIRECTIONAL_EXPANSION", score=95, confirmation_ready=True,
+            efficiency=.82, directional_bars=5, vwap=40.4,
+        )
+        features = MovementFeatures(400_000, 1.62, 1.75, 1.85, .27, .29, .32, 1, .82, 5, .89, 40.4, True, False, 3_600, False)
+
+        with tempfile.TemporaryDirectory() as directory:
+            book = CandidateBook(f"{directory}/candidates.json")
+            self.assertEqual(book.observe(snapshot, [alert], features, 2.38, Thresholds()), [])
+            mature_snapshot = replace(snapshot, timestamp=stamp + timedelta(minutes=1), price=40.87)
+            mature_alert = replace(alert, snapshot=mature_snapshot, directional_bars=6)
+
+            ready = book.observe(mature_snapshot, [mature_alert], replace(features, directional_bars=6), 2.38, Thresholds())
 
             self.assertEqual(len(ready), 1)
 

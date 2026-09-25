@@ -156,7 +156,8 @@ class CandidateBook:
                 return []
             record.update({"last_seen_at": now, "lane": best.lane, "last_price": snapshot.price})
             self.dirty = True
-            return [best] if now - armed_at >= thresholds.candidate_confirm_seconds and best.confirmation_ready else []
+            confirmed = now - armed_at >= thresholds.candidate_confirm_seconds and best.confirmation_ready
+            return [best] if confirmed or mature_directional(best, thresholds) else []
 
         direction = 1 if record.get("direction") == "BULLISH" else -1
         prior_extreme = float(record.get("active_extreme", snapshot.price))

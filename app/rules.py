@@ -110,6 +110,11 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
         return None
     direction_value = "BULLISH" if direction_sign > 0 else "BEARISH"
     opening = idx < 10
+    expected_cumulative = profile.expected_cumulative(idx, max(snapshot.timestamp.second / 60, 0.10))
+    tod_rvol = snapshot.volume / expected_cumulative if expected_cumulative > 0 else 0
+    expected_5m = profile.expected_window(idx)
+    local_rvol = features.volume_5m / expected_5m if features.volume_5m is not None and expected_5m > 0 else None
+    dollar_volume_5m = (features.volume_5m or 0) * snapshot.price
     opening_move_threshold = max(
         thresholds.min_directional_5m_atr * 1.5,
         thresholds.min_5m_atr_move,
@@ -133,6 +138,9 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
         position >= thresholds.directional_edge_position if direction_sign > 0
         else position <= 1 - thresholds.directional_edge_position
     )
+    impulse_position_ok = position is not None and (
+        position >= 0.55 if direction_sign > 0 else position <= 0.45
+    )
     fresh_edge = features.fresh_level_break or (
         features.new_extreme_age_seconds is not None
         and features.new_extreme_age_seconds <= thresholds.max_extreme_age_seconds
@@ -141,21 +149,26 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
     sustained_move = (features.move_15m_atr or 0) >= thresholds.min_directional_15m_atr
     fresh_impulse_threshold = opening_move_threshold if opening else thresholds.min_directional_5m_atr * 0.75
     fresh_impulse = (features.move_5m_atr or 0) >= fresh_impulse_threshold
+    standalone_fast_impulse = (
+        not opening
+        and (features.move_5m_atr or 0) >= max(0.18, thresholds.min_directional_5m_atr * 1.5)
+        and (features.efficiency_5m or 0) >= max(0.70, thresholds.min_directional_efficiency)
+        and features.directional_bars >= thresholds.min_directional_bars
+        and (features.directional_share or 0) >= 0.70
+        and dollar_volume_5m >= thresholds.min_5m_dollar_volume
+        and impulse_position_ok
+    )
+    signal_efficiency = max(efficiency, features.efficiency_5m or 0) if standalone_fast_impulse else efficiency
     if not (
         (fresh_impulse or sustained_move or persistent_trend)
-        and horizon_ok
-        and efficiency >= thresholds.min_directional_efficiency * 0.85
+        and (horizon_ok or standalone_fast_impulse)
+        and signal_efficiency >= thresholds.min_directional_efficiency * 0.85
         and features.directional_bars >= arm_bars
         and features.vwap_aligned
-        and edge_ok
-        and fresh_edge
+        and ((edge_ok and fresh_edge) or standalone_fast_impulse)
     ):
         return None
 
-    expected_cumulative = profile.expected_cumulative(idx, max(snapshot.timestamp.second / 60, 0.10))
-    tod_rvol = snapshot.volume / expected_cumulative if expected_cumulative > 0 else 0
-    expected_5m = profile.expected_window(idx)
-    local_rvol = features.volume_5m / expected_5m if features.volume_5m is not None and expected_5m > 0 else None
     atr_progress = ratio_to_atr(snapshot.price, snapshot.open_price, profile.atr14)
     day_range = None
     if snapshot.high_price is not None and snapshot.low_price is not None and profile.atr14 > 0:
@@ -167,7 +180,7 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
     score = directional_score(features, tod_rvol, local_rvol, thresholds)
     confirmation_ready = (
         ((features.move_5m_atr or 0) >= thresholds.min_directional_5m_atr or sustained_move or persistent_trend)
-        and efficiency >= thresholds.min_directional_efficiency
+        and signal_efficiency >= thresholds.min_directional_efficiency
         and features.directional_bars >= thresholds.min_directional_bars
         and (features.directional_share or 0) >= 0.65
     )
@@ -176,16 +189,17 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
     reasons = (
         f"{features.move_5m_atr or 0:.2f} ATR in 5m",
         f"{sustained_atr:.2f} ATR sustained",
-        f"{efficiency:.2f} directional efficiency",
-        "fresh range break" if features.fresh_level_break else "pressing fresh daily extreme",
+        f"{signal_efficiency:.2f} directional efficiency",
+        "fresh range break" if features.fresh_level_break else
+        "fast liquid impulse" if standalone_fast_impulse else "pressing fresh daily extreme",
     )
     return VolumeAlert(
         snapshot, severity, direction_value, "DIRECTIONAL EXPANSION", reasons,
         tod_rvol, local_rvol, features.volume_5m,
-        (features.volume_5m or 0) * snapshot.price,
+        dollar_volume_5m,
         features.change_5m_pct, speed, features.move_5m_atr,
         atr_progress, day_range, "DIRECTIONAL_EXPANSION", score,
-        confirmation_ready, efficiency, features.directional_bars, features.vwap,
+        confirmation_ready, signal_efficiency, features.directional_bars, features.vwap,
     )
 
 
