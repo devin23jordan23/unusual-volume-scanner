@@ -131,11 +131,19 @@ class CandidateBook:
             self.records.pop(symbol, None)
             self.dirty = True
             record = None
-        best = max(proposals, key=lambda item: item.score, default=None)
+        best = max(
+            proposals,
+            key=lambda item: (
+                accelerated_candidate(item, thresholds),
+                item.confirmation_ready,
+                item.score,
+            ),
+            default=None,
+        )
         if record is None:
             if best:
                 self._arm(best)
-                return [best] if mature_directional(best, thresholds) else []
+                return [best] if immediate_candidate(best, thresholds) else []
             return []
         if record.get("status") == "ARMED":
             armed_at = float(record.get("armed_at", 0))
@@ -144,7 +152,7 @@ class CandidateBook:
                 self.dirty = True
                 if best:
                     self._arm(best)
-                    return [best] if mature_directional(best, thresholds) else []
+                    return [best] if immediate_candidate(best, thresholds) else []
                 return []
             if not best:
                 return []
@@ -157,7 +165,7 @@ class CandidateBook:
             record.update({"last_seen_at": now, "lane": best.lane, "last_price": snapshot.price})
             self.dirty = True
             confirmed = now - armed_at >= thresholds.candidate_confirm_seconds and best.confirmation_ready
-            return [best] if confirmed or mature_directional(best, thresholds) else []
+            return [best] if confirmed or immediate_candidate(best, thresholds) else []
 
         direction = 1 if record.get("direction") == "BULLISH" else -1
         prior_extreme = float(record.get("active_extreme", snapshot.price))
@@ -167,7 +175,7 @@ class CandidateBook:
         opposite = best if best and best.direction != record.get("direction") else None
         if opposite and atr > 0 and direction * (prior_extreme - snapshot.price) / atr >= thresholds.reversal_rearm_atr:
             self._arm(opposite)
-            return []
+            return [opposite] if immediate_candidate(opposite, thresholds) else []
         retrace_atr = direction * (prior_extreme - snapshot.price) / atr if atr > 0 else 0
         quiet = features.move_5m_atr is not None and features.move_5m_atr < thresholds.min_directional_5m_atr * 0.5
         if retrace_atr >= thresholds.consolidation_retrace_atr or quiet:
@@ -226,6 +234,32 @@ def mature_directional(alert: VolumeAlert, thresholds: Thresholds) -> bool:
         and alert.confirmation_ready
         and alert.directional_bars >= max(6, thresholds.min_directional_bars * 2)
     )
+
+
+def accelerated_candidate(alert: VolumeAlert, thresholds: Thresholds) -> bool:
+    if alert.dollar_volume_5m < thresholds.min_5m_dollar_volume:
+        return False
+    efficient = (alert.efficiency or 0) >= max(0.72, thresholds.min_directional_efficiency)
+    persistent = alert.directional_bars >= max(2, thresholds.min_directional_bars - 1)
+    if alert.lane == "DIRECTIONAL_EXPANSION":
+        return bool(
+            efficient
+            and persistent
+            and (alert.move_5m_atr or 0) >= max(0.22, thresholds.min_directional_5m_atr * 1.5)
+        )
+    return bool(
+        alert.lane == "VOLUME_IGNITION"
+        and alert.confirmation_ready
+        and efficient
+        and persistent
+        and (alert.local_rvol or 0) >= max(3.0, thresholds.min_local_rvol)
+        and abs(alert.price_change_5m_pct or 0) >= max(0.60, thresholds.min_5m_move_pct)
+        and (alert.speed_ratio or 0) >= thresholds.min_speed_ratio
+    )
+
+
+def immediate_candidate(alert: VolumeAlert, thresholds: Thresholds) -> bool:
+    return mature_directional(alert, thresholds) or accelerated_candidate(alert, thresholds)
 
 
 def window_change(history: list[StockSnapshot], seconds: int) -> float | None:

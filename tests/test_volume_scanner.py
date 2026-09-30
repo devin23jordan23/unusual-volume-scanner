@@ -310,7 +310,112 @@ class VolumeScannerTests(unittest.TestCase):
                 rolling.record(snapshot)
 
         self.assertTrue(ready)
-        self.assertEqual(ready[0].snapshot.timestamp.time(), datetime(2026, 9, 25, 9, 37).time())
+        self.assertLessEqual(ready[0].snapshot.timestamp.time(), datetime(2026, 9, 25, 9, 37).time())
+
+    def test_mrna_opening_spike_releases_on_explosive_confirmation(self):
+        profile = replace(
+            self.profile,
+            symbol="MRNA",
+            atr14=11.40,
+            minute_volume=tuple([200_000] * 390),
+            move_5m_pct=tuple([0.45] * 390),
+        )
+        prices = [198.72, 199.3151, 198.695, 198.69, 199.61, 200.415, 201.245, 202.91]
+        rolling = RollingStockState()
+        thresholds = Thresholds()
+
+        with tempfile.TemporaryDirectory() as directory:
+            book = CandidateBook(f"{directory}/candidates.json")
+            ready = []
+            high = 0.0
+            low = float("inf")
+            for offset, price in enumerate(prices):
+                stamp = datetime(2026, 9, 29, 9, 30, tzinfo=TZ) + timedelta(minutes=offset)
+                high = max(high, price)
+                low = min(low, price)
+                snapshot = StockSnapshot(
+                    "MRNA", price, 500_000 + offset * 250_000, stamp,
+                    prices[0], 197.29, high, low,
+                )
+                features = rolling.features(snapshot, profile)
+                proposals = evaluate_lanes(snapshot, profile, features, thresholds)
+                ready.extend(book.observe(snapshot, proposals, features, profile.atr14, thresholds))
+                rolling.record(snapshot)
+
+        self.assertTrue(ready)
+        self.assertLessEqual(ready[0].snapshot.timestamp.time(), datetime(2026, 9, 29, 9, 37).time())
+
+    def test_accelerated_directional_candidate_does_not_wait_two_minutes(self):
+        stamp = datetime(2026, 9, 29, 10, 17, tzinfo=TZ)
+        snapshot = StockSnapshot("ORCL", 137.30, 8_000_000, stamp, 133.08, 132.60, 137.30, 132.80)
+        alert = VolumeAlert(
+            snapshot, Severity.HIGH, "BULLISH", "DIRECTIONAL EXPANSION", (),
+            1.4, 1.8, 500_000, 68_000_000, 1.67, 5.0, .26, .35, .50,
+            lane="DIRECTIONAL_EXPANSION", score=70, confirmation_ready=False,
+            efficiency=.86, directional_bars=2, vwap=135.0,
+        )
+        features = MovementFeatures(500_000, 1.67, 2.0, 2.2, .26, .3, .35, .86, .75, 2, .60, 135, True, True, 0, True)
+
+        with tempfile.TemporaryDirectory() as directory:
+            book = CandidateBook(f"{directory}/candidates.json")
+            ready = book.observe(snapshot, [alert], features, 9.0, Thresholds())
+
+        self.assertEqual(ready, [alert])
+
+    def test_accelerated_volume_candidate_requires_real_movement(self):
+        stamp = datetime(2026, 9, 29, 10, 6, tzinfo=TZ)
+        snapshot = StockSnapshot("BE", 291.87, 8_000_000, stamp, 278.44, 273, 291.87, 278)
+        moving = VolumeAlert(
+            snapshot, Severity.HIGH, "BULLISH", "VOLUME IGNITION", (),
+            3.2, 3.4, 200_000, 58_000_000, .72, 2.1, .16, .60, .70,
+            score=85, confirmation_ready=True, efficiency=.80, directional_bars=2,
+        )
+        stale = replace(moving, price_change_5m_pct=.05, speed_ratio=.2)
+        features = MovementFeatures(200_000, .72, 1, 1.2, .16, .2, .25, .8, .75, 2, .7, 290, True, True, 0, True)
+
+        with tempfile.TemporaryDirectory() as directory:
+            fast_book = CandidateBook(f"{directory}/fast.json")
+            stale_book = CandidateBook(f"{directory}/stale.json")
+            self.assertEqual(fast_book.observe(snapshot, [moving], features, 20, Thresholds()), [moving])
+            self.assertEqual(stale_book.observe(snapshot, [stale], features, 20, Thresholds()), [])
+
+    def test_accelerated_reversal_releases_without_restarting_timer(self):
+        stamp = datetime(2026, 9, 29, 9, 42, tzinfo=TZ)
+        bearish_snapshot = StockSnapshot("MSFT", 504.05, 4_000_000, stamp, 507.50, 509.20, 508.30, 504.05)
+        bearish = VolumeAlert(
+            bearish_snapshot, Severity.HIGH, "BEARISH", "DIRECTIONAL EXPANSION", (),
+            .8, 1.0, 300_000, 150_000_000, -.43, 1.58, .24, .28, .35,
+            lane="DIRECTIONAL_EXPANSION", score=88, confirmation_ready=True,
+            efficiency=.80, directional_bars=4, vwap=506,
+        )
+        bullish_snapshot = replace(
+            bearish_snapshot,
+            price=508.345,
+            volume=7_000_000,
+            timestamp=datetime(2026, 9, 29, 10, 23, tzinfo=TZ),
+            high_price=508.345,
+            low_price=502.54,
+        )
+        bullish = replace(
+            bearish,
+            snapshot=bullish_snapshot,
+            direction="BULLISH",
+            price_change_5m_pct=.50,
+            move_5m_atr=.25,
+            score=82,
+            confirmation_ready=False,
+            efficiency=.86,
+            directional_bars=4,
+        )
+        features = MovementFeatures(300_000, .50, .70, .80, .25, .35, .40, .86, .80, 4, .80, 506, True, True, 0, True)
+
+        with tempfile.TemporaryDirectory() as directory:
+            book = CandidateBook(f"{directory}/candidates.json")
+            book._arm(bearish)
+            book.mark_alerted(bearish)
+            ready = book.observe(bullish_snapshot, [bullish], features, 10, Thresholds())
+
+        self.assertEqual(ready, [bullish])
 
     def test_fast_impulse_still_requires_meaningful_liquidity(self):
         stamp = datetime(2026, 9, 24, 12, 17, tzinfo=TZ)
@@ -366,7 +471,7 @@ class VolumeScannerTests(unittest.TestCase):
         snapshot = StockSnapshot("SMCI", 40.81, 12_000_000, stamp, 40.44, 41.43, 41.60, 39.85)
         alert = VolumeAlert(
             snapshot, Severity.EXTREME, "BULLISH", "DIRECTIONAL EXPANSION", (),
-            0.70, 1.10, 400_000, 16_000_000, 1.62, 3.0, .27, .16, .74,
+            0.70, 1.10, 400_000, 16_000_000, 1.62, 3.0, .20, .16, .74,
             lane="DIRECTIONAL_EXPANSION", score=95, confirmation_ready=True,
             efficiency=.82, directional_bars=5, vwap=40.4,
         )
