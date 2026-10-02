@@ -5,7 +5,7 @@ from dataclasses import asdict
 from datetime import date, datetime, time
 from statistics import fmean
 
-from .models import Candle, VolumeProfile
+from .models import Candle, StockSnapshot, VolumeProfile
 
 SESSION_MINUTES = 390
 
@@ -62,6 +62,28 @@ def minute_index(timestamp: datetime) -> int | None:
     if local < time(9, 30) or local >= time(16, 0):
         return None
     return (timestamp.hour * 60 + timestamp.minute) - (9 * 60 + 30)
+
+
+def build_intraday_fallback_profile(snapshot: StockSnapshot) -> VolumeProfile:
+    idx = minute_index(snapshot.timestamp) or 0
+    fraction = max(snapshot.timestamp.second / 60, 0.10)
+    elapsed_minutes = max(idx + fraction, 0.10)
+    average_minute_volume = max(snapshot.volume / elapsed_minutes, 1.0)
+    day_range = 0.0
+    if snapshot.high_price is not None and snapshot.low_price is not None:
+        day_range = max(snapshot.high_price - snapshot.low_price, 0.0)
+    atr_proxy = max(snapshot.price * 0.03, day_range, 0.01)
+    normal_move = max(0.35, atr_proxy / snapshot.price * 100 * 0.15)
+    today = snapshot.timestamp.date().isoformat()
+    return VolumeProfile(
+        snapshot.symbol,
+        0,
+        tuple([average_minute_volume] * SESSION_MINUTES),
+        tuple([normal_move] * SESSION_MINUTES),
+        atr_proxy,
+        "intraday-fallback",
+        today,
+    )
 
 
 class ProfileCache:

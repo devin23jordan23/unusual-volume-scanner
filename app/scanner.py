@@ -9,7 +9,7 @@ from .config import Settings
 from .discord import DiscordNotifier
 from .market_hours import is_market_open, is_premarket
 from .models import StockSnapshot
-from .profiles import ProfileCache, build_profile, minute_index
+from .profiles import ProfileCache, build_intraday_fallback_profile, build_profile, minute_index
 from .rules import evaluate_lanes
 from .schwab import SchwabClient
 from .state import AlertState, CandidateBook, RollingStockState, severity_rank
@@ -28,6 +28,7 @@ class VolumeScanner:
         self.alerts = AlertState(os.path.join(settings.data_dir, "volume_alert_state.json"))
         self.candidates = CandidateBook(os.path.join(settings.data_dir, "volume_candidate_state.json"))
         self.bootstrapped: set[str] = set()
+        self.fallback_symbols = {}
         self.prewarmed_on = None
 
     def run(self) -> None:
@@ -65,10 +66,16 @@ class VolumeScanner:
         candidates = []
         for snapshot in snapshots:
             profile = self.profiles.profiles.get(snapshot.symbol)
-            if not profile or not self.profiles.fresh(snapshot.symbol, today):
+            using_fallback = self.fallback_symbols.get(snapshot.symbol) == today
+            if not using_fallback and (not profile or not self.profiles.fresh(snapshot.symbol, today)):
                 profile = self.refresh_profile(snapshot.symbol, today)
             if not profile:
-                continue
+                profile = build_intraday_fallback_profile(snapshot)
+                if not using_fallback:
+                    self.fallback_symbols[snapshot.symbol] = today
+                    LOG.info("using intraday fallback profile symbol=%s", snapshot.symbol)
+            elif using_fallback:
+                profile = build_intraday_fallback_profile(snapshot)
             self.bootstrap_mover(snapshot, profile)
             features = self.rolling.features(snapshot, profile)
             proposals = evaluate_lanes(snapshot, profile, features, self.settings.thresholds)

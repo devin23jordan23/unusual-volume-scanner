@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 from app.config import DEFAULT_UNIVERSE, Settings, Thresholds, load_settings
 from app.discord import DiscordNotifier
 from app.models import Candle, MovementFeatures, Severity, StockSnapshot, VolumeAlert
-from app.profiles import build_profile
+from app.profiles import build_intraday_fallback_profile, build_profile, minute_index
 from app.rules import evaluate, evaluate_lanes
 from app.scanner import VolumeScanner
 from app.state import AlertState, CandidateBook, RollingStockState
@@ -43,6 +43,49 @@ class VolumeScannerTests(unittest.TestCase):
         later_five = self.profile.expected_window(14)
         self.assertGreater(first_five, later_five * 4)
 
+    def test_new_listing_fallback_is_self_relative(self):
+        stamp = datetime(2026, 10, 2, 10, 0, 30, tzinfo=TZ)
+        snapshot = StockSnapshot("SPCX", 155, 20_000_000, stamp, 150, None, 156, 149)
+
+        profile = build_intraday_fallback_profile(snapshot)
+        idx = minute_index(stamp)
+
+        self.assertEqual(profile.sessions, 0)
+        self.assertEqual(profile.as_of, "intraday-fallback")
+        self.assertGreaterEqual(profile.atr14, snapshot.price * .03)
+        self.assertAlmostEqual(snapshot.volume / profile.expected_cumulative(idx, .5), 1.0)
+
+    def test_spcx_opening_trend_alerts_without_historical_sessions(self):
+        prices = [
+            150.10, 150.6787, 151.7328, 151.23, 151.25,
+            151.965, 151.89, 151.8541, 151.84, 152.045,
+            152.18, 152.63, 153.055, 153.20, 153.4499,
+        ]
+        rolling = RollingStockState()
+        thresholds = Thresholds()
+
+        with tempfile.TemporaryDirectory() as directory:
+            book = CandidateBook(f"{directory}/candidates.json")
+            ready = []
+            high = 0.0
+            low = float("inf")
+            for offset, price in enumerate(prices):
+                stamp = datetime(2026, 10, 2, 9, 30, tzinfo=TZ) + timedelta(minutes=offset)
+                high = max(high, price)
+                low = min(low, price)
+                snapshot = StockSnapshot(
+                    "SPCX", price, 2_000_000 + offset * 1_000_000, stamp,
+                    prices[0], 148.30, high, low,
+                )
+                profile = build_intraday_fallback_profile(snapshot)
+                features = rolling.features(snapshot, profile)
+                proposals = evaluate_lanes(snapshot, profile, features, thresholds)
+                ready.extend(book.observe(snapshot, proposals, features, profile.atr14, thresholds))
+                rolling.record(snapshot)
+
+        self.assertTrue(ready)
+        self.assertLessEqual(ready[0].snapshot.timestamp.time(), datetime(2026, 10, 2, 9, 44).time())
+
     def test_true_time_of_day_rvol(self):
         stamp = datetime(2026, 9, 18, 9, 34, 59, tzinfo=TZ)
         normal = self.profile.expected_cumulative(4, 59 / 60)
@@ -62,6 +105,9 @@ class VolumeScannerTests(unittest.TestCase):
 
     def test_skhy_is_in_default_universe(self):
         self.assertIn("SKHY", DEFAULT_UNIVERSE)
+
+    def test_spcx_is_in_default_universe(self):
+        self.assertIn("SPCX", DEFAULT_UNIVERSE)
 
     def test_both_google_share_classes_are_in_default_universe(self):
         self.assertTrue({"GOOG", "GOOGL"}.issubset(DEFAULT_UNIVERSE))
