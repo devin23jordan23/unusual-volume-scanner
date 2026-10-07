@@ -118,3 +118,8 @@ class VolumeAlert:
     efficiency: float | None = None
     directional_bars: int = 0
     vwap: float | None = None
+    sector_symbol: str | None = None
+    sector_move_5m_pct: float | None = None
+    sector_relative_spy_5m_pct: float | None = None
+    stock_relative_sector_5m_pct: float | None = None
+    sector_context: str | None = None

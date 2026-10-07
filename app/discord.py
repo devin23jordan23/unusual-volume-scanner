@@ -35,6 +35,13 @@ class DiscordNotifier:
             field("Time-of-Day RVOL", f"{alert.tod_rvol:.2f}x"),
             field("ATR Progress", number(alert.atr_progress, " ATR")),
         ]
+        if alert.sector_symbol and alert.sector_context:
+            relative = alert.sector_relative_spy_5m_pct
+            fields.append(field(
+                "Sector Context",
+                f"{alert.sector_symbol} {alert.sector_context.title()}"
+                + ("" if relative is None else f" ({relative:+.2f}% vs SPY)"),
+            ))
         return {
             "username": "Unusual Volume Scanner",
             "embeds": [{

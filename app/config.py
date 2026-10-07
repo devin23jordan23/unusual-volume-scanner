@@ -47,6 +47,7 @@ class Thresholds:
     consolidation_retrace_atr: float = 0.15
     rearm_break_atr: float = 0.10
     reversal_rearm_atr: float = 0.20
+    min_sector_relative_spy_pct: float = 0.10
 
 
 @dataclass(frozen=True)
@@ -103,6 +104,7 @@ def load_settings() -> Settings:
             consolidation_retrace_atr=float(os.getenv("UVS_CONSOLIDATION_RETRACE_ATR", "0.15")),
             rearm_break_atr=float(os.getenv("UVS_REARM_BREAK_ATR", "0.10")),
             reversal_rearm_atr=float(os.getenv("UVS_REVERSAL_REARM_ATR", "0.20")),
+            min_sector_relative_spy_pct=float(os.getenv("UVS_MIN_SECTOR_RELATIVE_SPY_PCT", "0.10")),
         ),
     )
 

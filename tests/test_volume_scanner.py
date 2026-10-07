@@ -11,6 +11,7 @@ from app.models import Candle, MovementFeatures, Severity, StockSnapshot, Volume
 from app.profiles import build_intraday_fallback_profile, build_profile, minute_index
 from app.rules import evaluate, evaluate_lanes
 from app.scanner import VolumeScanner
+from app.sectors import SECTOR_BENCHMARKS, add_sector_context, context_symbols
 from app.state import AlertState, CandidateBook, RollingStockState
 
 from app.schwab import SchwabClient
@@ -127,6 +128,57 @@ class VolumeScannerTests(unittest.TestCase):
 
     def test_alert_batch_is_unlimited_by_default(self):
         self.assertEqual(Settings().max_alerts_per_scan, 0)
+
+    def test_large_cap_sector_benchmarks_are_available_as_context(self):
+        self.assertEqual(SECTOR_BENCHMARKS["MU"], "SOXX")
+        self.assertEqual(SECTOR_BENCHMARKS["WDC"], "SOXX")
+        self.assertEqual(SECTOR_BENCHMARKS["SNDK"], "SOXX")
+        self.assertEqual(SECTOR_BENCHMARKS["BE"], "XLI")
+        self.assertTrue({"SPY", "SOXX", "XLE", "XLI"}.issubset(context_symbols()))
+
+    def test_sector_leadership_boosts_priority_without_filtering(self):
+        stamp = datetime(2026, 10, 6, 10, 0, tzinfo=TZ)
+        snapshot = StockSnapshot("MU", 205, 5_000_000, stamp, 200, 199, 205, 199)
+        alert = VolumeAlert(
+            snapshot, Severity.HIGH, "BULLISH", "DIRECTIONAL EXPANSION", (),
+            1.8, 2.1, 400_000, 82_000_000, .80, 3.0, .20, .30, .40,
+            lane="DIRECTIONAL_EXPANSION", score=80,
+        )
+
+        enriched = add_sector_context(alert, .80, .45, .20, .10)
+
+        self.assertEqual(enriched.sector_symbol, "SOXX")
+        self.assertEqual(enriched.sector_context, "SECTOR LEADING / STOCK LEADING")
+        self.assertEqual(enriched.score, 99)
+        self.assertAlmostEqual(enriched.sector_relative_spy_5m_pct, .25)
+
+    def test_sector_divergence_does_not_remove_a_valid_alert(self):
+        stamp = datetime(2026, 10, 6, 10, 0, tzinfo=TZ)
+        snapshot = StockSnapshot("MU", 205, 5_000_000, stamp, 200, 199, 205, 199)
+        alert = VolumeAlert(
+            snapshot, Severity.HIGH, "BULLISH", "DIRECTIONAL EXPANSION", (),
+            1.8, 2.1, 400_000, 82_000_000, .80, 3.0, .20, .30, .40,
+            lane="DIRECTIONAL_EXPANSION", score=80,
+        )
+
+        enriched = add_sector_context(alert, .80, -.20, .10, .10)
+
+        self.assertEqual(enriched.sector_context, "SECTOR DIVERGENCE / STOCK LEADING")
+        self.assertEqual(enriched.score, 84)
+
+    def test_discord_shows_sector_context_only_when_available(self):
+        stamp = datetime(2026, 10, 6, 10, 0, tzinfo=TZ)
+        snapshot = StockSnapshot("MU", 205, 5_000_000, stamp, 200, 199, 205, 199)
+        alert = VolumeAlert(
+            snapshot, Severity.HIGH, "BULLISH", "DIRECTIONAL EXPANSION", (),
+            1.8, 2.1, 400_000, 82_000_000, .80, 3.0, .20, .30, .40,
+            sector_symbol="SOXX", sector_relative_spy_5m_pct=.25,
+            sector_context="SECTOR LEADING",
+        )
+
+        names = {item["name"] for item in DiscordNotifier("").payload(alert)["embeds"][0]["fields"]}
+
+        self.assertIn("Sector Context", names)
 
     def test_stale_railway_variables_cannot_remove_names_or_cap_alerts(self):
         with patch.dict("os.environ", {

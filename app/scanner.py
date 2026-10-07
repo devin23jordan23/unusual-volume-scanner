@@ -12,6 +12,7 @@ from .models import StockSnapshot
 from .profiles import ProfileCache, build_intraday_fallback_profile, build_profile, minute_index
 from .rules import evaluate_lanes
 from .schwab import SchwabClient
+from .sectors import SECTOR_BENCHMARKS, add_sector_context, context_symbols
 from .state import AlertState, CandidateBook, RollingStockState, severity_rank
 
 LOG = logging.getLogger(__name__)
@@ -62,9 +63,18 @@ class VolumeScanner:
 
     def run_once(self) -> None:
         today = datetime.now(ZoneInfo(self.settings.timezone)).date()
-        snapshots = self.client.stock_snapshots(sorted(self.settings.universe))
+        snapshots = self.client.stock_snapshots(sorted(self.settings.universe | context_symbols()))
+        snapshots_by_symbol = {snapshot.symbol: snapshot for snapshot in snapshots}
+        context_moves = {
+            symbol: self.context_move(snapshot)
+            for symbol, snapshot in snapshots_by_symbol.items()
+            if symbol in context_symbols()
+        }
         candidates = []
         for snapshot in snapshots:
+            if snapshot.symbol not in self.settings.universe:
+                self.rolling.record(snapshot)
+                continue
             profile = self.profiles.profiles.get(snapshot.symbol)
             using_fallback = self.fallback_symbols.get(snapshot.symbol) == today
             if not using_fallback and (not profile or not self.profiles.fresh(snapshot.symbol, today)):
@@ -79,6 +89,18 @@ class VolumeScanner:
             self.bootstrap_mover(snapshot, profile)
             features = self.rolling.features(snapshot, profile)
             proposals = evaluate_lanes(snapshot, profile, features, self.settings.thresholds)
+            sector = SECTOR_BENCHMARKS.get(snapshot.symbol)
+            if sector:
+                proposals = [
+                    add_sector_context(
+                        proposal,
+                        features.change_5m_pct,
+                        context_moves.get(sector),
+                        context_moves.get("SPY"),
+                        self.settings.thresholds.min_sector_relative_spy_pct,
+                    )
+                    for proposal in proposals
+                ]
             confirmed = self.candidates.observe(
                 snapshot, proposals, features, profile.atr14, self.settings.thresholds,
             )
@@ -97,7 +119,8 @@ class VolumeScanner:
                     f"{alert.snapshot.symbol}:{alert.lane}/{alert.score:.0f}/"
                     f"{alert.tod_rvol:.2f}x/"
                     f"{alert.price_change_5m_pct or 0:+.2f}%/"
-                    f"{alert.speed_ratio or 0:.2f}speed"
+                    f"{alert.speed_ratio or 0:.2f}speed/"
+                    f"{alert.sector_context or 'NO_SECTOR_CONTEXT'}"
                     for alert in ranked
                 ),
             )
@@ -109,6 +132,12 @@ class VolumeScanner:
                 self.candidates.mark_alerted(alert)
         self.candidates.save()
         LOG.info("scan complete snapshots=%s qualified=%s sent=%s", len(snapshots), len(candidates), len(ranked))
+
+    def context_move(self, snapshot: StockSnapshot) -> float | None:
+        _, move = self.rolling.metrics(snapshot, 300)
+        if move is not None:
+            return move
+        return snapshot.change_from_open_pct
 
     def bootstrap_mover(self, snapshot: StockSnapshot, profile) -> None:
         if snapshot.symbol in self.bootstrapped:

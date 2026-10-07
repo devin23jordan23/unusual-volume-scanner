@@ -8,6 +8,7 @@ The scanner runs two parallel detection lanes:
 
 - Volume ignition combines time-of-day and local RVOL, dollar liquidity, and fresh ATR-normalized movement.
 - Directional expansion combines 5/10/15-minute ATR displacement, consecutive directional bars, path efficiency, observed VWAP, active range-edge position, and new-high/new-low recency. Volume improves this lane's score but is not required.
+- Mapped large-cap alerts receive a ranking boost when their industry or sector ETF confirms the direction or leads SPY over the same five-minute window. Sector context never blocks an otherwise valid mover.
 
 The first impulse arms a short-lived candidate. Continued direction confirms it, sends one alert, and keeps the move active without repeating. A symbol only rearms after consolidation and a meaningful new level break, or after a meaningful reversal.
 
@@ -43,6 +44,7 @@ For browser authorization, temporarily set `SCHWAB_AUTH_SETUP_KEY`, deploy with 
 See `.env.example` for all `UVS_*` controls. The core universe is maintained in `app/config.py`; `UVS_IN_PLAY` can add temporary names without allowing stale Railway variables to remove core symbols. Stale volume-only conditions cannot alert after the opening window, while fresh directional expansion can alert without elevated RVOL.
 Confirmed alerts are unlimited and cannot be capped by a deployment variable.
 New listings without completed historical sessions use a temporary self-relative intraday profile until a normal volume and ATR profile is available.
+`UVS_MIN_SECTOR_RELATIVE_SPY_PCT` controls the minimum five-minute sector-versus-SPY performance gap used to label a sector as leading; the default is `0.10` percentage points.
 
 ## Tests
 
