@@ -52,7 +52,7 @@ class SchwabClient:
                     output.append(snapshot)
         return output
 
-    def price_history(self, symbol: str, calendar_days: int = 50) -> list[Candle]:
+    def price_history(self, symbol: str, calendar_days: int = 50, include_extended: bool = False) -> list[Candle]:
         now = datetime.now(ZoneInfo(self.settings.timezone))
         start = now - timedelta(days=calendar_days)
         data = self.get("/pricehistory", {
@@ -62,7 +62,7 @@ class SchwabClient:
             "frequency": 1,
             "startDate": int(start.timestamp() * 1000),
             "endDate": int(now.timestamp() * 1000),
-            "needExtendedHoursData": "false",
+            "needExtendedHoursData": "true" if include_extended else "false",
         })
         candles = []
         for raw in data.get("candles", []):

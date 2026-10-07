@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 from app.config import DEFAULT_UNIVERSE, Settings, Thresholds, load_settings
 from app.discord import DiscordNotifier
+from app.levels import add_level_context, crossed_round_number, premarket_range
 from app.models import Candle, MovementFeatures, Severity, StockSnapshot, VolumeAlert
 from app.profiles import build_intraday_fallback_profile, build_profile, minute_index
 from app.rules import evaluate, evaluate_lanes
@@ -186,6 +187,76 @@ class VolumeScannerTests(unittest.TestCase):
         names = {item["name"] for item in DiscordNotifier("").payload(alert)["embeds"][0]["fields"]}
 
         self.assertIn("Sector Context", names)
+
+    def test_key_level_confluence_boosts_but_does_not_create_alert(self):
+        stamp = datetime(2026, 10, 6, 10, 0, tzinfo=TZ)
+        snapshot = StockSnapshot("MU", 205.25, 5_000_000, stamp, 201, 199, 205.25, 200)
+        profile = replace(
+            self.profile, previous_day_high=204.80, five_day_high=205.00,
+            twenty_day_high=210.00,
+        )
+        features = MovementFeatures(
+            400_000, 1.0, 1.2, 1.4, .20, .24, .28,
+            .80, .75, 4, .80, 203, True, False, 0, True,
+        )
+        alert = VolumeAlert(
+            snapshot, Severity.HIGH, "BULLISH", "DIRECTIONAL EXPANSION", (),
+            1.8, 2.1, 400_000, 82_000_000, 1.0, 3.0, .20, .30, .40,
+            lane="DIRECTIONAL_EXPANSION", score=80,
+        )
+
+        enriched = add_level_context(alert, profile, features, (205.10, 198), 204.90, 200)
+
+        self.assertEqual(enriched.level_tier, 1)
+        self.assertTrue(any("Previous-Day High" in item for item in enriched.crossed_levels))
+        self.assertTrue(any("Premarket High" in item for item in enriched.crossed_levels))
+        self.assertGreater(enriched.score, alert.score)
+
+    def test_non_level_mover_remains_unchanged(self):
+        stamp = datetime(2026, 10, 6, 10, 0, tzinfo=TZ)
+        snapshot = StockSnapshot("MU", 203.40, 5_000_000, stamp, 201, 199, 204, 200)
+        features = MovementFeatures(
+            400_000, .10, .20, .30, .03, .06, .08,
+            .80, .75, 4, .80, 203, True, False, 0, False,
+        )
+        alert = VolumeAlert(
+            snapshot, Severity.HIGH, "BULLISH", "DIRECTIONAL EXPANSION", (),
+            1.8, 2.1, 400_000, 82_000_000, .10, 3.0, .03, .20, .30,
+            score=80,
+        )
+
+        enriched = add_level_context(alert, self.profile, features, (206, 198), 204, 200)
+
+        self.assertEqual(enriched, alert)
+
+    def test_premarket_range_uses_only_current_day_extended_bars(self):
+        today = date(2026, 10, 6)
+        candles = [
+            Candle(datetime(2026, 10, 6, 8, 0, tzinfo=TZ), 200, 202, 199, 201, 10_000),
+            Candle(datetime(2026, 10, 6, 9, 0, tzinfo=TZ), 201, 203, 200, 202, 12_000),
+            Candle(datetime(2026, 10, 6, 9, 30, tzinfo=TZ), 202, 204, 201, 203, 50_000),
+        ]
+
+        self.assertEqual(premarket_range(candles, today), (203, 199))
+
+    def test_major_round_number_takes_precedence_over_minor_whole_number(self):
+        self.assertEqual(crossed_round_number(210.30, 207.70, -1), 210.0)
+
+    def test_discord_names_the_crossed_levels(self):
+        stamp = datetime(2026, 10, 6, 10, 0, tzinfo=TZ)
+        snapshot = StockSnapshot("MU", 205.25, 5_000_000, stamp, 201, 199, 205.25, 200)
+        alert = VolumeAlert(
+            snapshot, Severity.HIGH, "BULLISH", "DIRECTIONAL EXPANSION", (),
+            1.8, 2.1, 400_000, 82_000_000, 1.0, 3.0, .20, .30, .40,
+            crossed_levels=("Previous-Day High $204.80", "Premarket High $205.10"),
+            level_tier=1,
+        )
+
+        fields = DiscordNotifier("").payload(alert)["embeds"][0]["fields"]
+        level = next(item for item in fields if item["name"] == "Level Confluence")
+
+        self.assertIn("Previous-Day High $204.80", level["value"])
+        self.assertIn("Premarket High $205.10", level["value"])
 
     def test_stale_railway_variables_cannot_remove_names_or_cap_alerts(self):
         with patch.dict("os.environ", {
@@ -645,7 +716,7 @@ class VolumeScannerTests(unittest.TestCase):
 
         scanner.bootstrap_mover(snapshot, profile)
 
-        scanner.client.price_history.assert_called_once_with("META", calendar_days=2)
+        scanner.client.price_history.assert_called_once_with("META", calendar_days=2, include_extended=True)
         self.assertIn("META", scanner.bootstrapped)
         self.assertEqual(len(scanner.rolling.snapshots["META"]), 2)
 
@@ -666,7 +737,7 @@ class VolumeScannerTests(unittest.TestCase):
         scanner.bootstrap_mover(quiet, profile)
         scanner.bootstrap_mover(active, profile)
 
-        scanner.client.price_history.assert_called_once_with("META", calendar_days=2)
+        scanner.client.price_history.assert_called_once_with("META", calendar_days=2, include_extended=True)
         self.assertIn("META", scanner.bootstrapped)
 
     def test_premarket_profile_warmup_runs_once_per_session(self):

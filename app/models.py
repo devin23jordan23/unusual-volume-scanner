@@ -52,6 +52,12 @@ class VolumeProfile:
     atr14: float
     as_of: str
     generated_on: str
+    previous_day_high: float | None = None
+    previous_day_low: float | None = None
+    five_day_high: float | None = None
+    five_day_low: float | None = None
+    twenty_day_high: float | None = None
+    twenty_day_low: float | None = None
 
     def expected_cumulative(self, minute_index: int, minute_fraction: float = 1.0) -> float:
         idx = max(0, min(minute_index, len(self.minute_volume) - 1))
@@ -123,3 +129,5 @@ class VolumeAlert:
     sector_relative_spy_5m_pct: float | None = None
     stock_relative_sector_5m_pct: float | None = None
     sector_context: str | None = None
+    crossed_levels: tuple[str, ...] = ()
+    level_tier: int | None = None

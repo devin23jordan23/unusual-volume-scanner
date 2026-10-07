@@ -42,6 +42,11 @@ class DiscordNotifier:
                 f"{alert.sector_symbol} {alert.sector_context.title()}"
                 + ("" if relative is None else f" ({relative:+.2f}% vs SPY)"),
             ))
+        if alert.crossed_levels:
+            fields.append(field(
+                "Level Confluence" if len(alert.crossed_levels) > 1 else "Key Level",
+                "\n".join(alert.crossed_levels),
+            ))
         return {
             "username": "Unusual Volume Scanner",
             "embeds": [{

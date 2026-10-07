@@ -8,6 +8,7 @@ from .auth_server import start_auth_server
 from .config import Settings
 from .discord import DiscordNotifier
 from .market_hours import is_market_open, is_premarket
+from .levels import add_level_context, premarket_range
 from .models import StockSnapshot
 from .profiles import ProfileCache, build_intraday_fallback_profile, build_profile, minute_index
 from .rules import evaluate_lanes
@@ -30,6 +31,8 @@ class VolumeScanner:
         self.candidates = CandidateBook(os.path.join(settings.data_dir, "volume_candidate_state.json"))
         self.bootstrapped: set[str] = set()
         self.fallback_symbols = {}
+        self.premarket_levels = {}
+        self.premarket_attempted = set()
         self.prewarmed_on = None
 
     def run(self) -> None:
@@ -104,6 +107,18 @@ class VolumeScanner:
             confirmed = self.candidates.observe(
                 snapshot, proposals, features, profile.atr14, self.settings.thresholds,
             )
+            if confirmed:
+                self.ensure_premarket_levels(snapshot)
+                history = list(self.rolling.snapshots.get(snapshot.symbol, ()))
+                prior_high = max((item.high_price or item.price for item in history), default=None)
+                prior_low = min((item.low_price or item.price for item in history), default=None)
+                confirmed = [
+                    add_level_context(
+                        alert, profile, features,
+                        self.premarket_levels.get(snapshot.symbol), prior_high, prior_low,
+                    )
+                    for alert in confirmed
+                ]
             self.rolling.record(snapshot)
             candidates.extend(confirmed)
 
@@ -139,6 +154,27 @@ class VolumeScanner:
             return move
         return snapshot.change_from_open_pct
 
+    def ensure_premarket_levels(self, snapshot: StockSnapshot) -> None:
+        attempted = getattr(self, "premarket_attempted", None)
+        if attempted is None:
+            attempted = self.premarket_attempted = set()
+        levels = getattr(self, "premarket_levels", None)
+        if levels is None:
+            levels = self.premarket_levels = {}
+        if snapshot.symbol in attempted or snapshot.symbol in levels:
+            return
+        attempted.add(snapshot.symbol)
+        try:
+            candles = self.client.price_history(
+                snapshot.symbol, calendar_days=2, include_extended=True,
+            )
+        except Exception as exc:
+            LOG.warning("premarket level load failed for %s: %s", snapshot.symbol, exc)
+            return
+        premarket = premarket_range(candles, snapshot.timestamp.date())
+        if premarket:
+            levels[snapshot.symbol] = premarket
+
     def bootstrap_mover(self, snapshot: StockSnapshot, profile) -> None:
         if snapshot.symbol in self.bootstrapped:
             return
@@ -161,18 +197,30 @@ class VolumeScanner:
         if displacement < 0.25 and not (range_atr >= 0.50 and at_edge) and not elevated_volume:
             return
         try:
-            candles = self.client.price_history(snapshot.symbol, calendar_days=2)
+            candles = self.client.price_history(snapshot.symbol, calendar_days=2, include_extended=True)
         except Exception as exc:
             LOG.warning("intraday bootstrap failed for %s: %s", snapshot.symbol, exc)
             return
         self.bootstrapped.add(snapshot.symbol)
+        attempted = getattr(self, "premarket_attempted", None)
+        if attempted is None:
+            attempted = self.premarket_attempted = set()
+        attempted.add(snapshot.symbol)
+        levels = getattr(self, "premarket_levels", None)
+        if levels is None:
+            levels = self.premarket_levels = {}
+        premarket = premarket_range(candles, snapshot.timestamp.date())
+        if premarket:
+            levels[snapshot.symbol] = premarket
         self.rolling.snapshots.pop(snapshot.symbol, None)
         cumulative = 0
         high = None
         low = None
         seeded = 0
         for candle in candles:
-            if candle.timestamp.date() != snapshot.timestamp.date() or candle.timestamp >= snapshot.timestamp:
+            if (candle.timestamp.date() != snapshot.timestamp.date()
+                    or candle.timestamp >= snapshot.timestamp
+                    or minute_index(candle.timestamp) is None):
                 continue
             cumulative += candle.volume
             high = candle.high if high is None else max(high, candle.high)

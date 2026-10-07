@@ -46,6 +46,9 @@ def build_profile(symbol: str, candles: list[Candle], sessions: int, today: date
         true_ranges.append(max(high - low, abs(high - previous_close), abs(low - previous_close)) if previous_close else high - low)
     atr_sample = true_ranges[-14:]
     atr14 = fmean(atr_sample) if atr_sample else 0.0
+    previous = daily[-1]
+    five_day = daily[-5:]
+    twenty_day = daily[-20:]
     return VolumeProfile(
         symbol,
         len(selected_days),
@@ -54,6 +57,12 @@ def build_profile(symbol: str, candles: list[Candle], sessions: int, today: date
         atr14,
         selected_days[-1].isoformat(),
         today.isoformat(),
+        previous[0],
+        previous[1],
+        max(item[0] for item in five_day),
+        min(item[1] for item in five_day),
+        max(item[0] for item in twenty_day),
+        min(item[1] for item in twenty_day),
     )
 
 
