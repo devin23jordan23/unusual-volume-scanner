@@ -23,11 +23,13 @@ SECTOR_BENCHMARKS = {
     "ISRG": "XLV", "LLY": "XLV", "UNH": "XLV",
     "MRNA": "IBB", "REGN": "IBB",
     "CVX": "XLE", "XOM": "XLE",
-    "BA": "XLI", "BE": "XLI", "CAT": "XLI", "DE": "XLI",
+    "BA": "XLI", "CAT": "XLI", "DE": "XLI", "GEV": "XLI",
     "LMT": "XLI", "UBER": "XLI",
     "CEG": "XLU", "NRG": "XLU", "VST": "XLU",
     "COST": "XLP", "WMT": "XLP",
-    "ENPH": "TAN", "FSLR": "TAN",
+    "BE": "ICLN", "EOSE": "ICLN", "FCEL": "ICLN", "FLNC": "ICLN",
+    "PLUG": "ICLN",
+    "ENPH": "TAN", "FSLR": "TAN", "RUN": "TAN",
 }
 
 

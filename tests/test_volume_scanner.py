@@ -133,8 +133,15 @@ class VolumeScannerTests(unittest.TestCase):
         self.assertEqual(SECTOR_BENCHMARKS["MU"], "SOXX")
         self.assertEqual(SECTOR_BENCHMARKS["WDC"], "SOXX")
         self.assertEqual(SECTOR_BENCHMARKS["SNDK"], "SOXX")
-        self.assertEqual(SECTOR_BENCHMARKS["BE"], "XLI")
-        self.assertTrue({"SPY", "SOXX", "XLE", "XLI"}.issubset(context_symbols()))
+        self.assertEqual(SECTOR_BENCHMARKS["GEV"], "XLI")
+        self.assertEqual(SECTOR_BENCHMARKS["BE"], "ICLN")
+        self.assertEqual(SECTOR_BENCHMARKS["FCEL"], "ICLN")
+        self.assertTrue({"SPY", "SOXX", "XLE", "XLI", "ICLN"}.issubset(context_symbols()))
+
+    def test_clean_energy_and_power_names_are_in_default_universe(self):
+        self.assertTrue({
+            "BE", "GEV", "FCEL", "PLUG", "FLNC", "EOSE", "RUN",
+        }.issubset(DEFAULT_UNIVERSE))
 
     def test_sector_leadership_boosts_priority_without_filtering(self):
         stamp = datetime(2026, 10, 6, 10, 0, tzinfo=TZ)
