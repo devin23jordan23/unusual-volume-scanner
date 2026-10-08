@@ -11,15 +11,24 @@ class DiscordNotifier:
         self.webhook_url = webhook_url
 
     def send(self, alert: VolumeAlert) -> bool:
+        return self.send_batch([alert])
+
+    def send_batch(self, alerts: list[VolumeAlert]) -> bool:
+        if not alerts:
+            return True
         if not self.webhook_url:
-            LOG.info("Discord webhook missing; alert skipped: %s", alert.snapshot.symbol)
+            LOG.info(
+                "Discord webhook missing; alerts skipped: %s",
+                ",".join(alert.snapshot.symbol for alert in alerts),
+            )
             return False
         import requests
 
         for attempt in range(3):
             try:
-                response = requests.post(self.webhook_url, json=self.payload(alert), timeout=10)
+                response = requests.post(self.webhook_url, json=self.batch_payload(alerts), timeout=10)
                 response.raise_for_status()
+                LOG.info("Discord alerts sent: %s", ",".join(alert.snapshot.symbol for alert in alerts))
                 return True
             except Exception as exc:
                 LOG.warning("Discord send failed attempt %s: %s", attempt + 1, exc)
@@ -27,6 +36,16 @@ class DiscordNotifier:
         return False
 
     def payload(self, alert: VolumeAlert) -> dict:
+        return self.batch_payload([alert])
+
+    def batch_payload(self, alerts: list[VolumeAlert]) -> dict:
+        return {
+            "username": "Unusual Volume Scanner",
+            "content": f"**{len(alerts)} qualified mover{'s' if len(alerts) != 1 else ''}**",
+            "embeds": [self.embed(alert) for alert in alerts],
+        }
+
+    def embed(self, alert: VolumeAlert) -> dict:
         snapshot = alert.snapshot
         bullish = alert.direction == "BULLISH"
         color = 0xF1C40F if alert.severity.value == "EXTREME" else (0x2ECC71 if bullish else 0xE74C3C)
@@ -48,15 +67,12 @@ class DiscordNotifier:
                 "\n".join(alert.crossed_levels),
             ))
         return {
-            "username": "Unusual Volume Scanner",
-            "embeds": [{
-                "title": f"{snapshot.symbol} - {alert.direction} {alert.setup}",
-                "description": alert.severity.value,
-                "color": color,
-                "fields": fields,
-                "footer": {"text": "Market-data alert only. Not a trade recommendation."},
-                "timestamp": snapshot.timestamp.isoformat(),
-            }],
+            "title": f"{snapshot.symbol} - {alert.direction} {alert.setup}",
+            "description": alert.severity.value,
+            "color": color,
+            "fields": fields,
+            "footer": {"text": "Market-data alert only. Not a trade recommendation."},
+            "timestamp": snapshot.timestamp.isoformat(),
         }
 
 

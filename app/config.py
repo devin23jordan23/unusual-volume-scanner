@@ -43,6 +43,7 @@ class Thresholds:
     min_directional_5m_atr: float = 0.12
     min_directional_10m_atr: float = 0.20
     min_directional_15m_atr: float = 0.28
+    min_directional_30m_atr: float = 0.35
     directional_edge_position: float = 0.70
     max_extreme_age_seconds: int = 300
     consolidation_retrace_atr: float = 0.15
@@ -100,6 +101,7 @@ def load_settings() -> Settings:
             min_directional_5m_atr=float(os.getenv("UVS_MIN_DIRECTIONAL_5M_ATR", "0.12")),
             min_directional_10m_atr=float(os.getenv("UVS_MIN_DIRECTIONAL_10M_ATR", "0.20")),
             min_directional_15m_atr=float(os.getenv("UVS_MIN_DIRECTIONAL_15M_ATR", "0.28")),
+            min_directional_30m_atr=float(os.getenv("UVS_MIN_DIRECTIONAL_30M_ATR", "0.35")),
             directional_edge_position=float(os.getenv("UVS_DIRECTIONAL_EDGE_POSITION", "0.70")),
             max_extreme_age_seconds=int(os.getenv("UVS_MAX_EXTREME_AGE_SECONDS", "300")),
             consolidation_retrace_atr=float(os.getenv("UVS_CONSOLIDATION_RETRACE_ATR", "0.15")),

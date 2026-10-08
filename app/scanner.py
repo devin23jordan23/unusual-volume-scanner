@@ -9,7 +9,7 @@ from .config import Settings
 from .discord import DiscordNotifier
 from .market_hours import is_market_open, is_premarket
 from .levels import add_level_context, premarket_range
-from .models import StockSnapshot
+from .models import StockSnapshot, VolumeAlert
 from .profiles import ProfileCache, build_intraday_fallback_profile, build_profile, minute_index
 from .rules import evaluate_lanes
 from .schwab import SchwabClient
@@ -141,12 +141,15 @@ class VolumeScanner:
             )
         if self.settings.max_alerts_per_scan > 0:
             ranked = ranked[:self.settings.max_alerts_per_scan]
-        for alert in ranked:
-            if self.notifier.send(alert):
-                self.alerts.mark(alert)
-                self.candidates.mark_alerted(alert)
+        sent = 0
+        for batch in alert_batches(ranked):
+            if self.notifier.send_batch(batch):
+                for alert in batch:
+                    self.alerts.mark(alert)
+                    self.candidates.mark_alerted(alert)
+                sent += len(batch)
         self.candidates.save()
-        LOG.info("scan complete snapshots=%s qualified=%s sent=%s", len(snapshots), len(candidates), len(ranked))
+        LOG.info("scan complete snapshots=%s qualified=%s sent=%s", len(snapshots), len(candidates), sent)
 
     def context_move(self, snapshot: StockSnapshot) -> float | None:
         _, move = self.rolling.metrics(snapshot, 300)
@@ -244,3 +247,7 @@ class VolumeScanner:
         except Exception as exc:
             LOG.warning("profile refresh failed for %s: %s", symbol, exc)
             return self.profiles.profiles.get(symbol)
+
+
+def alert_batches(alerts: list[VolumeAlert], size: int = 3) -> list[list[VolumeAlert]]:
+    return [alerts[start:start + size] for start in range(0, len(alerts), size)]

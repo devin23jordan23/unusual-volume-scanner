@@ -132,7 +132,16 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
         and features.directional_bars >= max(6, thresholds.min_directional_bars * 2)
         and (features.directional_share or 0) >= 0.80
     )
-    horizon_ok = horizon_ok or persistent_trend
+    extended_trend = (
+        not opening
+        and (features.move_30m_atr or 0) >= thresholds.min_directional_30m_atr
+        and (features.move_5m_atr or 0) >= thresholds.min_directional_5m_atr * 0.40
+        and (features.efficiency_30m or 0) >= max(0.65, thresholds.min_directional_efficiency)
+        and (features.efficiency_5m or 0) >= thresholds.min_directional_efficiency * 0.80
+        and features.directional_bars >= max(2, thresholds.min_directional_bars - 1)
+        and (features.directional_share or 0) >= 0.65
+    )
+    horizon_ok = horizon_ok or persistent_trend or extended_trend
     position = snapshot.range_position
     edge_ok = position is not None and (
         position >= thresholds.directional_edge_position if direction_sign > 0
@@ -158,9 +167,12 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
         and dollar_volume_5m >= thresholds.min_5m_dollar_volume
         and impulse_position_ok
     )
-    signal_efficiency = max(efficiency, features.efficiency_5m or 0) if standalone_fast_impulse else efficiency
+    signal_efficiency = (
+        max(efficiency, features.efficiency_5m or 0, features.efficiency_30m or 0)
+        if standalone_fast_impulse or extended_trend else efficiency
+    )
     if not (
-        (fresh_impulse or sustained_move or persistent_trend)
+        (fresh_impulse or sustained_move or persistent_trend or extended_trend)
         and (horizon_ok or standalone_fast_impulse)
         and signal_efficiency >= thresholds.min_directional_efficiency * 0.85
         and features.directional_bars >= arm_bars
@@ -179,17 +191,26 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
         speed = abs(features.change_5m_pct) / normal_move
     score = directional_score(features, tod_rvol, local_rvol, thresholds)
     confirmation_ready = (
-        ((features.move_5m_atr or 0) >= thresholds.min_directional_5m_atr or sustained_move or persistent_trend)
+        ((features.move_5m_atr or 0) >= thresholds.min_directional_5m_atr
+         or sustained_move or persistent_trend or extended_trend)
         and signal_efficiency >= thresholds.min_directional_efficiency
-        and features.directional_bars >= thresholds.min_directional_bars
+        and features.directional_bars >= (
+            max(2, thresholds.min_directional_bars - 1) if extended_trend
+            else thresholds.min_directional_bars
+        )
         and (features.directional_share or 0) >= 0.65
     )
     severity = Severity.EXTREME if score >= 90 else Severity.HIGH if score >= 75 else Severity.IN_PLAY
-    sustained_atr = max(features.move_10m_atr or 0, features.move_15m_atr or 0)
+    sustained_atr = max(
+        features.move_10m_atr or 0,
+        features.move_15m_atr or 0,
+        features.move_30m_atr or 0,
+    )
     reasons = (
         f"{features.move_5m_atr or 0:.2f} ATR in 5m",
         f"{sustained_atr:.2f} ATR sustained",
         f"{signal_efficiency:.2f} directional efficiency",
+        "30m persistent trend" if extended_trend else
         "fresh range break" if features.fresh_level_break else
         "fast liquid impulse" if standalone_fast_impulse else "pressing fresh daily extreme",
     )
@@ -223,6 +244,7 @@ def directional_score(features: MovementFeatures, tod_rvol: float, local_rvol: f
     score = 20 * min((features.move_5m_atr or 0) / thresholds.min_directional_5m_atr, 2)
     score += 20 * min((features.move_10m_atr or 0) / thresholds.min_directional_10m_atr, 2)
     score += 15 * min((features.move_15m_atr or 0) / thresholds.min_directional_15m_atr, 2)
+    score += 10 * min((features.move_30m_atr or 0) / thresholds.min_directional_30m_atr, 2)
     score += 20 * (features.efficiency_10m or 0)
     score += 10 * (features.directional_share or 0)
     score += 5 if features.vwap_crossed else 3 if features.vwap_aligned else 0

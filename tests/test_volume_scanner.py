@@ -11,7 +11,7 @@ from app.levels import add_level_context, crossed_round_number, premarket_range
 from app.models import Candle, MovementFeatures, Severity, StockSnapshot, VolumeAlert
 from app.profiles import build_intraday_fallback_profile, build_profile, minute_index
 from app.rules import evaluate, evaluate_lanes
-from app.scanner import VolumeScanner
+from app.scanner import VolumeScanner, alert_batches
 from app.sectors import SECTOR_BENCHMARKS, add_sector_context, context_symbols
 from app.state import AlertState, CandidateBook, RollingStockState
 
@@ -257,6 +257,47 @@ class VolumeScannerTests(unittest.TestCase):
 
         self.assertIn("Previous-Day High $204.80", level["value"])
         self.assertIn("Premarket High $205.10", level["value"])
+
+    def test_same_cycle_alerts_are_grouped_three_at_a_time_without_a_cap(self):
+        groups = alert_batches(list(range(8)))
+
+        self.assertEqual([len(group) for group in groups], [3, 3, 2])
+        self.assertEqual([item for group in groups for item in group], list(range(8)))
+
+    def test_discord_batch_contains_three_complete_alert_embeds(self):
+        stamp = datetime(2026, 10, 7, 10, 0, tzinfo=TZ)
+        alerts = []
+        for symbol in ("MU", "AMD", "NVDA"):
+            snapshot = StockSnapshot(symbol, 205, 5_000_000, stamp, 200, 199, 205, 199)
+            alerts.append(VolumeAlert(
+                snapshot, Severity.HIGH, "BULLISH", "DIRECTIONAL EXPANSION", (),
+                1.8, 2.1, 400_000, 82_000_000, .80, 3.0, .20, .30, .40,
+            ))
+
+        payload = DiscordNotifier("").batch_payload(alerts)
+
+        self.assertEqual(len(payload["embeds"]), 3)
+        self.assertEqual([embed["title"].split()[0] for embed in payload["embeds"]], ["MU", "AMD", "NVDA"])
+
+    def test_extended_thirty_minute_trend_catches_a_steady_mu_move(self):
+        stamp = datetime(2026, 10, 7, 10, 10, tzinfo=TZ)
+        snapshot = StockSnapshot("MU", 1040.57, 8_000_000, stamp, 1017.42, 1045.56, 1041, 1013)
+        profile = replace(
+            self.profile, symbol="MU", atr14=50.0,
+            minute_volume=tuple([100_000] * 390),
+        )
+        features = MovementFeatures(
+            500_000, .13, .20, .25, .06, .10, .15,
+            .80, .70, 2, .80, 1030, True, False, 30, True,
+            2.10, .42, .82,
+        )
+
+        alerts = evaluate_lanes(snapshot, profile, features, Thresholds(min_5m_dollar_volume=1))
+        directional = [item for item in alerts if item.lane == "DIRECTIONAL_EXPANSION"]
+
+        self.assertEqual(len(directional), 1)
+        self.assertTrue(directional[0].confirmation_ready)
+        self.assertIn("30m persistent trend", directional[0].reasons)
 
     def test_stale_railway_variables_cannot_remove_names_or_cap_alerts(self):
         with patch.dict("os.environ", {

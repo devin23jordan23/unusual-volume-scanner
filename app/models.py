@@ -93,6 +93,9 @@ class MovementFeatures:
     vwap_crossed: bool
     new_extreme_age_seconds: float | None
     fresh_level_break: bool
+    change_30m_pct: float | None = None
+    move_30m_atr: float | None = None
+    efficiency_30m: float | None = None
 
 
 class Severity(str, Enum):

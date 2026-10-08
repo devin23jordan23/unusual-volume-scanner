@@ -7,11 +7,12 @@ Standalone Schwab-powered scanner for fresh volume ignition and sustained direct
 The scanner runs two parallel detection lanes:
 
 - Volume ignition combines time-of-day and local RVOL, dollar liquidity, and fresh ATR-normalized movement.
-- Directional expansion combines 5/10/15-minute ATR displacement, consecutive directional bars, path efficiency, observed VWAP, active range-edge position, and new-high/new-low recency. Volume improves this lane's score but is not required.
+- Directional expansion combines 5/10/15/30-minute ATR displacement, consecutive directional bars, path efficiency, observed VWAP, active range-edge position, and new-high/new-low recency. Volume improves this lane's score but is not required.
 - Mapped large-cap alerts receive a ranking boost when their industry or sector ETF confirms the direction or leads SPY over the same five-minute window. Sector context never blocks an otherwise valid mover.
 - Confirmed alerts are ranked higher when their move crosses previous-day, premarket, intraday, multiday, or round-number levels. Crossed levels appear in Discord, while the absence of a key-level cross never blocks a valid mover.
 
 The first impulse arms a short-lived candidate. Continued direction confirms it, sends one alert, and keeps the move active without repeating. A symbol only rearms after consolidation and a meaningful new level break, or after a meaningful reversal.
+Confirmed movers from the same 30-second scan are sent in Discord messages containing up to three embeds. Overflow is sent immediately in additional groups, so batching never caps, delays, or drops alerts.
 
 ## Local Setup
 

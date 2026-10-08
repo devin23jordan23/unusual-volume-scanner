@@ -51,6 +51,7 @@ class RollingStockState:
         change_5m = window_change(history, 300)
         change_10m = window_change(history, 600)
         change_15m = window_change(history, 900)
+        change_30m = window_change(history, 1800)
         direction = sign(change_5m if change_5m not in (None, 0) else change_10m)
         bars, share = directional_path(history, direction, 600)
         if share is None:
@@ -67,6 +68,9 @@ class RollingStockState:
             bars, share, vwap, aligned, crossed,
             new_extreme_age(history, snapshot, direction),
             fresh_level_break(history, snapshot, direction),
+            change_30m,
+            atr_displacement(snapshot.price, change_30m, profile.atr14),
+            path_efficiency(history, 1800),
         )
 
 
