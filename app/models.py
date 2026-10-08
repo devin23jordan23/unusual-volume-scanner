@@ -13,6 +13,8 @@ class StockSnapshot:
     previous_close: float | None = None
     high_price: float | None = None
     low_price: float | None = None
+    volume_source: str | None = None
+    volume_price: float | None = None
 
     @property
     def change_from_open_pct(self) -> float | None:

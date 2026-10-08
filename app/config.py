@@ -13,7 +13,7 @@ DEFAULT_UNIVERSE = {
     "MSFT", "MSTR", "MTUM", "MU", "NBIS", "NET", "NFLX", "NKE", "NOW",
     "NRG", "NVDA", "OKLO", "OKTA", "ORCL", "PANW", "PLTR", "PLUG", "PYPL",
     "QCOM", "QQQ", "RBLX", "REGN", "RUN", "SBUX", "SKHY", "SLV", "SMCI", "SMH",
-    "SNDK", "SNOW", "SOFI", "SOXX", "SPCX", "SPY", "TEAM", "TGT", "SHOP", "TSLA",
+    "SNDK", "SNOW", "SOFI", "SOXX", "SPCX", "SPX", "SPY", "TEAM", "TGT", "SHOP", "TSLA",
     "TSM", "UBER", "UNH", "UPST", "USO", "V", "VRT", "VST", "WMT", "XLE",
     "XLF", "XLK", "XOM", "ZS",
 }

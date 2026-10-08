@@ -54,6 +54,8 @@ class DiscordNotifier:
             field("Time-of-Day RVOL", f"{alert.tod_rvol:.2f}x"),
             field("ATR Progress", number(alert.atr_progress, " ATR")),
         ]
+        if snapshot.volume_source:
+            fields.append(field("Volume Source", f"{snapshot.volume_source} shares (proxy for {snapshot.symbol} index)"))
         if alert.sector_symbol and alert.sector_context:
             relative = alert.sector_relative_spy_5m_pct
             fields.append(field(

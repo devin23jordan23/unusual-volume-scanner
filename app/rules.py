@@ -29,7 +29,7 @@ def evaluate(
     normal_move = profile.normal_5m_move_pct(idx)
     speed_ratio = abs(price_change_5m_pct) / normal_move if price_change_5m_pct is not None and normal_move else None
     move_5m_atr = five_minute_atr_move(snapshot.price, price_change_5m_pct, profile.atr14)
-    dollar_volume_5m = (volume_5m if volume_5m is not None else snapshot.volume) * snapshot.price
+    dollar_volume_5m = (volume_5m if volume_5m is not None else snapshot.volume) * (snapshot.volume_price or snapshot.price)
     atr_progress = ratio_to_atr(snapshot.price, snapshot.open_price, profile.atr14)
     day_range = None
     if snapshot.high_price is not None and snapshot.low_price is not None and profile.atr14 > 0:
@@ -114,7 +114,7 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
     tod_rvol = snapshot.volume / expected_cumulative if expected_cumulative > 0 else 0
     expected_5m = profile.expected_window(idx)
     local_rvol = features.volume_5m / expected_5m if features.volume_5m is not None and expected_5m > 0 else None
-    dollar_volume_5m = (features.volume_5m or 0) * snapshot.price
+    dollar_volume_5m = (features.volume_5m or 0) * (snapshot.volume_price or snapshot.price)
     opening_move_threshold = max(
         thresholds.min_directional_5m_atr * 1.5,
         thresholds.min_5m_atr_move,

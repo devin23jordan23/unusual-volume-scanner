@@ -231,6 +231,7 @@ class VolumeScanner:
             self.rolling.record(StockSnapshot(
                 snapshot.symbol, candle.close, cumulative, candle.timestamp,
                 snapshot.open_price, snapshot.previous_close, high, low,
+                snapshot.volume_source, snapshot.volume_price,
             ))
             seeded += 1
         if seeded:

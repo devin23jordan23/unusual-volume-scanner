@@ -2,6 +2,8 @@
 
 Standalone Schwab-powered scanner for fresh volume ignition and sustained directional price expansion. Alerts are sent to a dedicated Discord webhook.
 
+SPX is included using Schwab's `$SPX` index prices and levels. Because the index has no share volume, its volume profile, RVOL, and volume-weighted calculations use time-aligned SPY share volume; dollar liquidity uses SPY price. SPX alerts identify index movement, not an option contract. The lotto scanner evaluates SPXW/SPX contracts separately.
+
 ## Signal Model
 
 The scanner runs two parallel detection lanes:

@@ -111,6 +111,61 @@ class VolumeScannerTests(unittest.TestCase):
     def test_spcx_is_in_default_universe(self):
         self.assertIn("SPCX", DEFAULT_UNIVERSE)
 
+    def test_spx_is_in_default_universe(self):
+        self.assertIn("SPX", DEFAULT_UNIVERSE)
+
+    def test_spx_quote_uses_index_price_and_spy_share_volume(self):
+        now = datetime(2026, 10, 8, 10, 0, tzinfo=TZ)
+        with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {}, clear=True):
+            client = SchwabClient(Settings(data_dir=directory))
+            client.get = Mock(return_value={
+                "$SPX": {"quote": {"lastPrice": 7800, "regularMarketOpenPrice": 7790,
+                                    "regularMarketPreviousClose": 7780, "regularMarketDayHigh": 7805,
+                                    "regularMarketDayLow": 7775}},
+                "SPY": {"quote": {"lastPrice": 780, "regularMarketTotalVolume": 1_500_000}},
+            })
+            snapshots = client.stock_snapshots(["SPX"])
+
+        self.assertEqual(len(snapshots), 1)
+        self.assertEqual((snapshots[0].price, snapshots[0].volume), (7800, 1_500_000))
+        self.assertEqual((snapshots[0].volume_source, snapshots[0].volume_price), ("SPY", 780))
+        self.assertIn("$SPX", client.get.call_args.args[1]["symbols"])
+        self.assertIn("SPY", client.get.call_args.args[1]["symbols"])
+
+    def test_spx_quote_skips_when_spy_proxy_missing(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {}, clear=True):
+            client = SchwabClient(Settings(data_dir=directory))
+            client.get = Mock(return_value={"$SPX": {"quote": {"lastPrice": 7800}}})
+            self.assertEqual(client.stock_snapshots(["SPX"]), [])
+
+    def test_spx_history_aligns_index_prices_with_spy_volume(self):
+        stamp = datetime(2026, 10, 8, 10, 0, tzinfo=TZ)
+        epoch = int(stamp.timestamp() * 1000)
+        with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {}, clear=True):
+            client = SchwabClient(Settings(data_dir=directory))
+            client.get = Mock(side_effect=[
+                {"candles": [{"datetime": epoch, "open": 7790, "high": 7801, "low": 7789,
+                              "close": 7800, "volume": 0}]},
+                {"candles": [{"datetime": epoch, "open": 779, "high": 780.2, "low": 778.8,
+                              "close": 780, "volume": 120_000}]},
+            ])
+            candles = client.price_history("SPX")
+
+        self.assertEqual((candles[0].close, candles[0].volume), (7800, 120_000))
+        self.assertEqual([call.args[1]["symbol"] for call in client.get.call_args_list], ["$SPX", "SPY"])
+
+    def test_spx_dollar_liquidity_uses_spy_price(self):
+        stamp = datetime(2026, 9, 18, 9, 34, 59, tzinfo=TZ)
+        normal = self.profile.expected_cumulative(4, 59 / 60)
+        snapshot = StockSnapshot("SPX", 7800, int(normal * 3), stamp, 7780, 7770, 7810, 7770,
+                                 "SPY", 780)
+        alert = evaluate(snapshot, self.profile, 100_000, 1.0, Thresholds(min_5m_dollar_volume=1))
+
+        self.assertIsNotNone(alert)
+        self.assertEqual(alert.dollar_volume_5m, 78_000_000)
+        fields = DiscordNotifier("").embed(alert)["fields"]
+        self.assertIn("SPY shares", next(field["value"] for field in fields if field["name"] == "Volume Source"))
+
     def test_both_google_share_classes_are_in_default_universe(self):
         self.assertTrue({"GOOG", "GOOGL"}.issubset(DEFAULT_UNIVERSE))
 

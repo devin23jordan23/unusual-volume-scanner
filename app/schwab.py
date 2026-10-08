@@ -42,35 +42,48 @@ class SchwabClient:
             self.exchange_callback_url(callback)
 
     def stock_snapshots(self, symbols: list[str]) -> list[StockSnapshot]:
-        output = []
+        requested = set(symbols)
+        providers = {"$SPX" if symbol == "SPX" else symbol for symbol in requested}
+        if "SPX" in requested:
+            providers.add("SPY")
+        raw_quotes = {}
         now = datetime.now(ZoneInfo(self.settings.timezone))
-        for batch in chunks(symbols, 50):
-            data = self.get("/quotes", {"symbols": ",".join(batch)})
-            for symbol in batch:
-                snapshot = parse_quote(symbol, data.get(symbol, {}), now)
-                if snapshot:
-                    output.append(snapshot)
+        for batch in chunks(sorted(providers), 50):
+            raw_quotes.update(self.get("/quotes", {"symbols": ",".join(batch)}))
+        spy = parse_quote("SPY", raw_quotes.get("SPY", {}), now) if "SPX" in requested else None
+        output = []
+        for symbol in symbols:
+            if symbol == "SPX":
+                if not spy or spy.volume <= 0:
+                    LOG.warning("SPX snapshot skipped: SPY share-volume proxy unavailable")
+                    continue
+                snapshot = parse_quote(symbol, raw_quotes.get("$SPX", raw_quotes.get("SPX", {})), now,
+                                       volume_override=spy.volume, volume_source="SPY", volume_price=spy.price)
+            else:
+                snapshot = parse_quote(symbol, raw_quotes.get(symbol, {}), now)
+            if snapshot:
+                output.append(snapshot)
         return output
 
     def price_history(self, symbol: str, calendar_days: int = 50, include_extended: bool = False) -> list[Candle]:
         now = datetime.now(ZoneInfo(self.settings.timezone))
         start = now - timedelta(days=calendar_days)
-        data = self.get("/pricehistory", {
-            "symbol": symbol,
+        params = {
+            "symbol": "$SPX" if symbol == "SPX" else symbol,
             "periodType": "day",
             "frequencyType": "minute",
             "frequency": 1,
             "startDate": int(start.timestamp() * 1000),
             "endDate": int(now.timestamp() * 1000),
             "needExtendedHoursData": "true" if include_extended else "false",
-        })
-        candles = []
-        for raw in data.get("candles", []):
-            try:
-                timestamp = datetime.fromtimestamp(raw["datetime"] / 1000, ZoneInfo(self.settings.timezone))
-                candles.append(Candle(timestamp, float(raw["open"]), float(raw["high"]), float(raw["low"]), float(raw["close"]), int(raw["volume"])))
-            except (KeyError, TypeError, ValueError):
-                continue
+        }
+        data = self.get("/pricehistory", params)
+        candles = parse_candles(data, self.settings.timezone)
+        if symbol == "SPX":
+            spy_data = self.get("/pricehistory", {**params, "symbol": "SPY"})
+            spy_volume = {candle.timestamp: candle.volume for candle in parse_candles(spy_data, self.settings.timezone)}
+            candles = [Candle(c.timestamp, c.open, c.high, c.low, c.close, spy_volume[c.timestamp])
+                       for c in candles if c.timestamp in spy_volume]
         return candles
 
     def get(self, endpoint: str, params: dict | None = None) -> dict:
@@ -191,11 +204,24 @@ class SchwabClient:
         return {"Authorization": f"Basic {basic}", "Content-Type": "application/x-www-form-urlencoded"}
 
 
-def parse_quote(symbol: str, raw: dict, now: datetime) -> StockSnapshot | None:
+def parse_candles(data: dict, timezone: str) -> list[Candle]:
+    candles = []
+    for raw in data.get("candles", []):
+        try:
+            timestamp = datetime.fromtimestamp(raw["datetime"] / 1000, ZoneInfo(timezone))
+            candles.append(Candle(timestamp, float(raw["open"]), float(raw["high"]), float(raw["low"]),
+                                  float(raw["close"]), int(raw["volume"])))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return candles
+
+
+def parse_quote(symbol: str, raw: dict, now: datetime, volume_override: int | None = None,
+                volume_source: str | None = None, volume_price: float | None = None) -> StockSnapshot | None:
     quote = raw.get("quote") or raw
     price = first_number(quote, "lastPrice", "mark", "regularMarketLastPrice", "closePrice")
     # Prefer regular-session volume so premarket prints do not inflate RTH RVOL.
-    volume = first_number(quote, "regularMarketTotalVolume", "totalVolume", "volume")
+    volume = volume_override if volume_override is not None else first_number(quote, "regularMarketTotalVolume", "totalVolume", "volume")
     if price is None or volume is None:
         return None
     return StockSnapshot(
@@ -204,6 +230,7 @@ def parse_quote(symbol: str, raw: dict, now: datetime) -> StockSnapshot | None:
         first_number(quote, "regularMarketPreviousClose", "closePrice", "previousClose"),
         first_number(quote, "regularMarketDayHigh", "highPrice", "high"),
         first_number(quote, "regularMarketDayLow", "lowPrice", "low"),
+        volume_source, volume_price,
     )
 
 
