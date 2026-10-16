@@ -9,7 +9,9 @@ from app.config import DEFAULT_UNIVERSE, Settings, Thresholds, load_settings
 from app.discord import DiscordNotifier
 from app.levels import add_level_context, crossed_round_number, premarket_range
 from app.models import Candle, MovementFeatures, Severity, StockSnapshot, VolumeAlert
+from app.outcomes import AlertOutcomeStore
 from app.profiles import build_intraday_fallback_profile, build_profile, minute_index
+from app.quality import delivery_decision
 from app.rules import evaluate, evaluate_lanes
 from app.scanner import VolumeScanner, alert_batches
 from app.sectors import SECTOR_BENCHMARKS, add_sector_context, context_symbols
@@ -333,6 +335,87 @@ class VolumeScannerTests(unittest.TestCase):
 
         self.assertEqual(len(payload["embeds"]), 3)
         self.assertEqual([embed["title"].split()[0] for embed in payload["embeds"]], ["MU", "AMD", "NVDA"])
+        self.assertEqual(payload["content"], "**MU, AMD, NVDA | 3 qualified movers**")
+
+    def test_single_discord_notification_preview_names_the_ticker(self):
+        stamp = datetime(2026, 10, 15, 10, 0, tzinfo=TZ)
+        alert = VolumeAlert(
+            StockSnapshot("MU", 210, 5_000_000, stamp, 200, 198, 210, 199),
+            Severity.HIGH, "BULLISH", "DIRECTIONAL EXPANSION", (),
+            2.5, 3.0, 500_000, 100_000_000, 1.1, 4.0, .25, .50, .60,
+        )
+
+        self.assertEqual(
+            DiscordNotifier("").payload(alert)["content"],
+            "**MU | 1 qualified mover**",
+        )
+
+    def test_tiny_index_drift_is_not_actionable_for_discord(self):
+        stamp = datetime(2026, 10, 15, 13, 42, tzinfo=TZ)
+        alert = VolumeAlert(
+            StockSnapshot("SPY", 680, 50_000_000, stamp, 679, 678, 681, 677),
+            Severity.HIGH, "BULLISH", "DIRECTIONAL EXPANSION", (),
+            1.6, 2.0, 1_000_000, 680_000_000, .12, 3.85, .08, .15, .30,
+            lane="DIRECTIONAL_EXPANSION", score=118, confirmation_ready=True,
+            efficiency=.80, directional_bars=4,
+        )
+
+        self.assertFalse(delivery_decision(alert).actionable)
+
+    def test_sector_confirmed_real_move_remains_actionable(self):
+        stamp = datetime(2026, 10, 15, 10, 3, tzinfo=TZ)
+        alert = VolumeAlert(
+            StockSnapshot("MU", 210, 8_000_000, stamp, 202, 200, 211, 201),
+            Severity.HIGH, "BULLISH", "DIRECTIONAL EXPANSION", (),
+            2.45, 2.8, 600_000, 126_000_000, 1.34, 3.68, .24, .48, .60,
+            lane="DIRECTIONAL_EXPANSION", score=124, confirmation_ready=True,
+            efficiency=.80, directional_bars=4,
+            sector_context="SECTOR LEADING / STOCK LEADING",
+        )
+
+        self.assertTrue(delivery_decision(alert).actionable)
+
+    def test_outcome_store_measures_directional_mfe_mae_and_horizons(self):
+        stamp = datetime(2026, 10, 15, 10, 0, tzinfo=TZ)
+        alert = VolumeAlert(
+            StockSnapshot("MU", 200, 8_000_000, stamp, 195, 194, 200, 194),
+            Severity.HIGH, "BULLISH", "DIRECTIONAL EXPANSION", (),
+            2.5, 3.0, 600_000, 120_000_000, 1.0, 4.0, .25, .50, .60,
+            lane="DIRECTIONAL_EXPANSION", score=125, efficiency=.80, directional_bars=4,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            store = AlertOutcomeStore(f"{directory}/outcomes.sqlite3")
+            store.record(alert, "DELIVERED", "test")
+            store.observe([
+                replace(alert.snapshot, price=202, timestamp=stamp + timedelta(minutes=5)),
+                replace(alert.snapshot, price=198, timestamp=stamp + timedelta(minutes=15)),
+            ])
+            row = store.connection.execute("SELECT * FROM alert_outcomes").fetchone()
+
+        self.assertAlmostEqual(row["mfe_pct"], 1.0)
+        self.assertAlmostEqual(row["mae_pct"], 1.0)
+        self.assertAlmostEqual(row["outcome_5m_pct"], 1.0)
+        self.assertAlmostEqual(row["outcome_15m_pct"], -1.0)
+
+    def test_outcome_store_deduplicates_repeated_suppression_and_writes_review(self):
+        stamp = datetime(2026, 10, 15, 10, 0, tzinfo=TZ)
+        alert = VolumeAlert(
+            StockSnapshot("SPY", 680, 50_000_000, stamp, 679, 678, 681, 677),
+            Severity.HIGH, "BULLISH", "DIRECTIONAL EXPANSION", (),
+            1.6, 2.0, 1_000_000, 680_000_000, .12, 3.85, .08, .15, .30,
+            lane="DIRECTIONAL_EXPANSION", score=118, efficiency=.80, directional_bars=4,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            store = AlertOutcomeStore(f"{directory}/outcomes.sqlite3")
+            store.record(alert, "SUPPRESSED_QUALITY", "tiny move")
+            store.record(replace(alert, snapshot=replace(
+                alert.snapshot, timestamp=stamp + timedelta(seconds=30),
+            )), "SUPPRESSED_QUALITY", "tiny move")
+            count = store.connection.execute("SELECT count(*) FROM alert_outcomes").fetchone()[0]
+            report = store.write_daily_report("2026-10-15", f"{directory}/reviews")
+
+        self.assertEqual(count, 1)
+        self.assertIsNotNone(report)
 
     def test_extended_thirty_minute_trend_catches_a_steady_mu_move(self):
         stamp = datetime(2026, 10, 7, 10, 10, tzinfo=TZ)
@@ -446,6 +529,24 @@ class VolumeScannerTests(unittest.TestCase):
             displaced = replace(alert, snapshot=replace(snapshot, price=150.55, timestamp=stamp + timedelta(minutes=20)))
             self.assertFalse(state.should_send(nearby, 600, 1.0))
             self.assertTrue(state.should_send(displaced, 600, 1.0))
+
+    def test_severity_upgrade_does_not_bypass_symbol_cooldown(self):
+        stamp = datetime(2026, 10, 15, 10, 0, tzinfo=TZ)
+        snapshot = StockSnapshot("MU", 200, 5_000_000, stamp, 195, 194, 200, 194)
+        original = VolumeAlert(
+            snapshot, Severity.HIGH, "BULLISH", "DIRECTIONAL EXPANSION", (),
+            2.5, 3.0, 500_000, 100_000_000, 1.0, 4.0, .25, .50, .60,
+        )
+        upgraded = replace(
+            original,
+            severity=Severity.EXTREME,
+            snapshot=replace(snapshot, price=201, timestamp=stamp + timedelta(minutes=2)),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state = AlertState(f"{directory}/alerts.json")
+            state.mark(original)
+
+            self.assertFalse(state.should_send(upgraded, 600, 1.0))
 
     def test_fresh_fast_move_qualifies_after_open(self):
         stamp = datetime(2026, 9, 18, 9, 44, 30, tzinfo=TZ)

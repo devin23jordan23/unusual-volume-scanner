@@ -15,6 +15,8 @@ The scanner runs two parallel detection lanes:
 
 The first impulse arms a short-lived candidate. Continued direction confirms it, sends one alert, and keeps the move active without repeating. A symbol only rearms after consolidation and a meaningful new level break, or after a meaningful reversal.
 Confirmed movers from the same 30-second scan are sent in Discord messages containing up to three embeds. Overflow is sent immediately in additional groups, so batching never caps, delays, or drops alerts.
+Discord delivery applies an actionable-quality layer after detection: real absolute movement must be supported by an institutional level, confirming sector, or exceptional self-relative expansion. The full detector remains active, and both delivered and suppressed confirmed signals are written to `alert_outcomes.sqlite3` with 5/15/30/60-minute MFE and MAE tracking for evidence-based review.
+After the close, the scanner writes a dated JSON review under `data/daily_reviews/`. It compares delivered and suppressed signals and groups results by detection lane, sector confirmation, key-level confluence, and time of day.
 
 ## Local Setup
 

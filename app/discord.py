@@ -39,9 +39,11 @@ class DiscordNotifier:
         return self.batch_payload([alert])
 
     def batch_payload(self, alerts: list[VolumeAlert]) -> dict:
+        symbols = ", ".join(alert.snapshot.symbol for alert in alerts)
+        label = "mover" if len(alerts) == 1 else "movers"
         return {
             "username": "Unusual Volume Scanner",
-            "content": f"**{len(alerts)} qualified mover{'s' if len(alerts) != 1 else ''}**",
+            "content": f"**{symbols} | {len(alerts)} qualified {label}**",
             "embeds": [self.embed(alert) for alert in alerts],
         }
 

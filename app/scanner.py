@@ -10,7 +10,9 @@ from .discord import DiscordNotifier
 from .market_hours import is_market_open, is_premarket
 from .levels import add_level_context, premarket_range
 from .models import StockSnapshot, VolumeAlert
+from .outcomes import AlertOutcomeStore
 from .profiles import ProfileCache, build_intraday_fallback_profile, build_profile, minute_index
+from .quality import delivery_decision
 from .rules import evaluate_lanes
 from .schwab import SchwabClient
 from .sectors import SECTOR_BENCHMARKS, add_sector_context, context_symbols
@@ -29,11 +31,13 @@ class VolumeScanner:
         self.rolling = RollingStockState()
         self.alerts = AlertState(os.path.join(settings.data_dir, "volume_alert_state.json"))
         self.candidates = CandidateBook(os.path.join(settings.data_dir, "volume_candidate_state.json"))
+        self.outcomes = AlertOutcomeStore(os.path.join(settings.data_dir, "alert_outcomes.sqlite3"))
         self.bootstrapped: set[str] = set()
         self.fallback_symbols = {}
         self.premarket_levels = {}
         self.premarket_attempted = set()
         self.prewarmed_on = None
+        self.reviewed_on = None
 
     def run(self) -> None:
         LOG.info("volume scanner started universe=%s", ",".join(sorted(self.settings.universe)))
@@ -44,11 +48,23 @@ class VolumeScanner:
                 elif is_premarket(self.settings.timezone):
                     self.prewarm_profiles()
                 else:
+                    self.write_daily_review()
                     LOG.info("market closed; waiting")
             except Exception:
                 LOG.exception("volume scan failed")
             active_soon = is_market_open(self.settings.timezone) or is_premarket(self.settings.timezone)
             time.sleep(self.settings.poll_seconds if active_soon else min(self.settings.poll_seconds * 5, 300))
+
+    def write_daily_review(self) -> None:
+        today = datetime.now(ZoneInfo(self.settings.timezone)).date()
+        if self.reviewed_on == today:
+            return
+        path = self.outcomes.write_daily_report(
+            today.isoformat(), os.path.join(self.settings.data_dir, "daily_reviews"),
+        )
+        if path:
+            LOG.info("daily outcome review written path=%s", path)
+        self.reviewed_on = today
 
     def prewarm_profiles(self) -> None:
         today = datetime.now(ZoneInfo(self.settings.timezone)).date()
@@ -68,6 +84,7 @@ class VolumeScanner:
         today = datetime.now(ZoneInfo(self.settings.timezone)).date()
         snapshots = self.client.stock_snapshots(sorted(self.settings.universe | context_symbols()))
         snapshots_by_symbol = {snapshot.symbol: snapshot for snapshot in snapshots}
+        self.outcomes.observe(snapshots)
         context_moves = {
             symbol: self.context_move(snapshot)
             for symbol, snapshot in snapshots_by_symbol.items()
@@ -139,17 +156,38 @@ class VolumeScanner:
                     for alert in ranked
                 ),
             )
-        if self.settings.max_alerts_per_scan > 0:
-            ranked = ranked[:self.settings.max_alerts_per_scan]
+        deliverable = []
+        for alert in ranked:
+            decision = delivery_decision(alert)
+            if not decision.actionable:
+                self.outcomes.record(alert, "SUPPRESSED_QUALITY", decision.reason)
+                LOG.info("Discord suppressed symbol=%s reason=%s", alert.snapshot.symbol, decision.reason)
+                continue
+            if not self.alerts.should_send(
+                alert,
+                self.settings.thresholds.cooldown_seconds,
+                self.settings.thresholds.realert_min_price_change_pct,
+            ):
+                self.outcomes.record(alert, "SUPPRESSED_REPEAT", "cooldown or insufficient price displacement")
+                LOG.info("Discord suppressed repeat symbol=%s", alert.snapshot.symbol)
+                continue
+            deliverable.append(alert)
         sent = 0
-        for batch in alert_batches(ranked):
+        for batch in alert_batches(deliverable):
             if self.notifier.send_batch(batch):
                 for alert in batch:
                     self.alerts.mark(alert)
                     self.candidates.mark_alerted(alert)
+                    self.outcomes.record(alert, "DELIVERED", delivery_decision(alert).reason)
                 sent += len(batch)
+            else:
+                for alert in batch:
+                    self.outcomes.record(alert, "DELIVERY_FAILED", "Discord webhook failed")
         self.candidates.save()
-        LOG.info("scan complete snapshots=%s qualified=%s sent=%s", len(snapshots), len(candidates), sent)
+        LOG.info(
+            "scan complete snapshots=%s qualified=%s actionable=%s sent=%s",
+            len(snapshots), len(candidates), len(deliverable), sent,
+        )
 
     def context_move(self, snapshot: StockSnapshot) -> float | None:
         _, move = self.rolling.metrics(snapshot, 300)

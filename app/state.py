@@ -89,8 +89,6 @@ class AlertState:
         last = self.sent.get(alert.snapshot.symbol)
         if not last:
             return True
-        if severity_rank(alert.severity.value) > severity_rank(last.get("severity", "")):
-            return True
         if alert.snapshot.timestamp.timestamp() - float(last.get("sent_at", 0)) < cooldown_seconds:
             return False
         last_price = float(last.get("price", 0) or 0)
@@ -108,6 +106,7 @@ class AlertState:
             "sent_at": alert.snapshot.timestamp.timestamp(),
             "severity": alert.severity.value,
             "price": alert.snapshot.price,
+            "direction": alert.direction,
         }
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
         with open(self.path, "w") as handle:
