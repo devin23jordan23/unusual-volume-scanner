@@ -93,6 +93,12 @@ def evaluate_lanes(snapshot: StockSnapshot, profile: VolumeProfile, features: Mo
                 efficiency=features.efficiency_5m,
                 directional_bars=features.directional_bars,
                 vwap=features.vwap,
+                price_change_10m_pct=features.change_10m_pct,
+                price_change_15m_pct=features.change_15m_pct,
+                move_10m_atr=features.move_10m_atr,
+                move_15m_atr=features.move_15m_atr,
+                efficiency_10m=features.efficiency_10m,
+                directional_share=features.directional_share,
             ))
     directional = evaluate_directional(snapshot, profile, features, thresholds)
     if directional:
@@ -221,6 +227,12 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
         features.change_5m_pct, speed, features.move_5m_atr,
         atr_progress, day_range, "DIRECTIONAL_EXPANSION", score,
         confirmation_ready, signal_efficiency, features.directional_bars, features.vwap,
+        price_change_10m_pct=features.change_10m_pct,
+        price_change_15m_pct=features.change_15m_pct,
+        move_10m_atr=features.move_10m_atr,
+        move_15m_atr=features.move_15m_atr,
+        efficiency_10m=features.efficiency_10m,
+        directional_share=features.directional_share,
     )
 
 

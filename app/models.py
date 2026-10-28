@@ -136,3 +136,9 @@ class VolumeAlert:
     sector_context: str | None = None
     crossed_levels: tuple[str, ...] = ()
     level_tier: int | None = None
+    price_change_10m_pct: float | None = None
+    price_change_15m_pct: float | None = None
+    move_10m_atr: float | None = None
+    move_15m_atr: float | None = None
+    efficiency_10m: float | None = None
+    directional_share: float | None = None

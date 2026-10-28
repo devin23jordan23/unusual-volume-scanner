@@ -33,10 +33,16 @@ class AlertOutcomeStore:
                 tod_rvol REAL NOT NULL,
                 local_rvol REAL,
                 move_5m_pct REAL,
+                move_10m_pct REAL,
+                move_15m_pct REAL,
                 move_5m_atr REAL,
+                move_10m_atr REAL,
+                move_15m_atr REAL,
                 atr_progress REAL,
                 efficiency REAL,
+                efficiency_10m REAL,
                 directional_bars INTEGER NOT NULL,
+                directional_share REAL,
                 sector_context TEXT,
                 crossed_levels TEXT NOT NULL,
                 delivery_status TEXT NOT NULL,
@@ -56,7 +62,26 @@ class AlertOutcomeStore:
             "CREATE INDEX IF NOT EXISTS idx_alert_outcomes_symbol_epoch "
             "ON alert_outcomes(symbol, alert_epoch)"
         )
+        self._ensure_columns({
+            "move_10m_pct": "REAL",
+            "move_15m_pct": "REAL",
+            "move_10m_atr": "REAL",
+            "move_15m_atr": "REAL",
+            "efficiency_10m": "REAL",
+            "directional_share": "REAL",
+        })
         self.connection.commit()
+
+    def _ensure_columns(self, columns: dict[str, str]) -> None:
+        existing = {
+            row["name"]
+            for row in self.connection.execute("PRAGMA table_info(alert_outcomes)").fetchall()
+        }
+        for name, column_type in columns.items():
+            if name not in existing:
+                self.connection.execute(
+                    f"ALTER TABLE alert_outcomes ADD COLUMN {name} {column_type}"
+                )
 
     def record(self, alert: VolumeAlert, status: str, reason: str) -> None:
         if status.startswith("SUPPRESSED"):
@@ -71,9 +96,11 @@ class AlertOutcomeStore:
             INSERT INTO alert_outcomes (
                 symbol, alert_time, alert_epoch, alert_price, direction, lane, setup,
                 severity, score, tod_rvol, local_rvol, move_5m_pct, move_5m_atr,
-                atr_progress, efficiency, directional_bars, sector_context,
+                move_10m_pct, move_15m_pct, move_10m_atr, move_15m_atr,
+                atr_progress, efficiency, efficiency_10m, directional_bars,
+                directional_share, sector_context,
                 crossed_levels, delivery_status, delivery_reason, last_seen_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(symbol, alert_time, lane) DO UPDATE SET
                 delivery_status=excluded.delivery_status,
                 delivery_reason=excluded.delivery_reason
@@ -82,7 +109,10 @@ class AlertOutcomeStore:
             alert.snapshot.timestamp.timestamp(), alert.snapshot.price, alert.direction,
             alert.lane, alert.setup, alert.severity.value, alert.score, alert.tod_rvol,
             alert.local_rvol, alert.price_change_5m_pct, alert.move_5m_atr,
-            alert.atr_progress, alert.efficiency, alert.directional_bars,
+            alert.price_change_10m_pct, alert.price_change_15m_pct,
+            alert.move_10m_atr, alert.move_15m_atr,
+            alert.atr_progress, alert.efficiency, alert.efficiency_10m,
+            alert.directional_bars, alert.directional_share,
             alert.sector_context, json.dumps(alert.crossed_levels), status, reason,
             alert.snapshot.timestamp.isoformat(),
         ))

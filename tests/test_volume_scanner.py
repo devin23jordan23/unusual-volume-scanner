@@ -371,9 +371,51 @@ class VolumeScannerTests(unittest.TestCase):
             lane="DIRECTIONAL_EXPANSION", score=124, confirmation_ready=True,
             efficiency=.80, directional_bars=4,
             sector_context="SECTOR LEADING / STOCK LEADING",
+            move_10m_atr=.32, move_15m_atr=.40,
+            efficiency_10m=.84, directional_share=.80,
         )
 
         self.assertTrue(delivery_decision(alert).actionable)
+
+    def test_sector_alignment_does_not_rescue_a_one_window_burst(self):
+        stamp = datetime(2026, 10, 28, 10, 45, tzinfo=TZ)
+        alert = VolumeAlert(
+            StockSnapshot("SHOP", 149, 8_000_000, stamp, 148, 147, 150, 147),
+            Severity.HIGH, "BULLISH", "DIRECTIONAL EXPANSION", (),
+            2.2, 2.8, 500_000, 74_000_000, .48, 3.2, .16, .20, .35,
+            lane="DIRECTIONAL_EXPANSION", score=110, confirmation_ready=True,
+            efficiency=.76, directional_bars=3,
+            sector_context="SECTOR ALIGNED",
+            move_10m_atr=.12, move_15m_atr=.14,
+            efficiency_10m=.45, directional_share=.55,
+        )
+
+        decision = delivery_decision(alert)
+
+        self.assertFalse(decision.actionable)
+        self.assertEqual(decision.reason, "movement lacks actionable confluence")
+
+    def test_orcl_style_sustained_expansion_is_actionable_without_a_level_break(self):
+        stamp = datetime(2026, 10, 28, 10, 18, tzinfo=TZ)
+        alert = VolumeAlert(
+            StockSnapshot("ORCL", 285, 10_000_000, stamp, 280, 279, 285, 279),
+            Severity.HIGH, "BULLISH", "DIRECTIONAL EXPANSION", (),
+            1.8, 2.1, 600_000, 170_000_000, .62, 2.4, .18, .35, .50,
+            lane="DIRECTIONAL_EXPANSION", score=108, confirmation_ready=True,
+            efficiency=.82, directional_bars=5,
+            sector_context="SECTOR ALIGNED / STOCK LEADING",
+            price_change_10m_pct=1.10, price_change_15m_pct=1.45,
+            move_10m_atr=.26, move_15m_atr=.34,
+            efficiency_10m=.86, directional_share=.83,
+        )
+
+        decision = delivery_decision(alert)
+
+        self.assertTrue(decision.actionable)
+        self.assertEqual(
+            decision.reason,
+            "sustained directional expansion with sector confirmation",
+        )
 
     def test_outcome_store_measures_directional_mfe_mae_and_horizons(self):
         stamp = datetime(2026, 10, 15, 10, 0, tzinfo=TZ)
@@ -396,6 +438,28 @@ class VolumeScannerTests(unittest.TestCase):
         self.assertAlmostEqual(row["mae_pct"], 1.0)
         self.assertAlmostEqual(row["outcome_5m_pct"], 1.0)
         self.assertAlmostEqual(row["outcome_15m_pct"], -1.0)
+
+    def test_outcome_store_persists_multi_window_quality(self):
+        stamp = datetime(2026, 10, 28, 10, 18, tzinfo=TZ)
+        alert = VolumeAlert(
+            StockSnapshot("ORCL", 285, 10_000_000, stamp, 280, 279, 285, 279),
+            Severity.HIGH, "BULLISH", "DIRECTIONAL EXPANSION", (),
+            1.8, 2.1, 600_000, 170_000_000, .62, 2.4, .18, .35, .50,
+            lane="DIRECTIONAL_EXPANSION", score=108, efficiency=.82,
+            directional_bars=5, price_change_10m_pct=1.10,
+            price_change_15m_pct=1.45, move_10m_atr=.26,
+            move_15m_atr=.34, efficiency_10m=.86,
+            directional_share=.83,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            store = AlertOutcomeStore(f"{directory}/outcomes.sqlite3")
+            store.record(alert, "DELIVERED", "test")
+            row = store.connection.execute("SELECT * FROM alert_outcomes").fetchone()
+
+        self.assertAlmostEqual(row["move_10m_atr"], .26)
+        self.assertAlmostEqual(row["move_15m_atr"], .34)
+        self.assertAlmostEqual(row["efficiency_10m"], .86)
+        self.assertAlmostEqual(row["directional_share"], .83)
 
     def test_outcome_store_deduplicates_repeated_suppression_and_writes_review(self):
         stamp = datetime(2026, 10, 15, 10, 0, tzinfo=TZ)
