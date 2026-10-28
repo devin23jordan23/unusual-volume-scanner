@@ -417,6 +417,24 @@ class VolumeScannerTests(unittest.TestCase):
             "sustained directional expansion with sector confirmation",
         )
 
+    def test_nbis_style_afternoon_expansion_is_not_suppressed_by_time_of_day(self):
+        stamp = datetime(2026, 10, 28, 14, 20, tzinfo=TZ)
+        alert = VolumeAlert(
+            StockSnapshot("NBIS", 74.80, 12_000_000, stamp, 71.90, 71.50, 75, 71.70),
+            Severity.HIGH, "BULLISH", "DIRECTIONAL EXPANSION", (),
+            1.7, 1.9, 700_000, 52_000_000, .55, 2.2, .19, .48, .62,
+            lane="DIRECTIONAL_EXPANSION", score=106, confirmation_ready=True,
+            efficiency=.80, directional_bars=6,
+            price_change_10m_pct=1.15, price_change_15m_pct=1.62,
+            move_10m_atr=.27, move_15m_atr=.38,
+            efficiency_10m=.84, directional_share=.82,
+        )
+
+        decision = delivery_decision(alert)
+
+        self.assertTrue(decision.actionable)
+        self.assertEqual(decision.reason, "sustained multi-window directional expansion")
+
     def test_outcome_store_measures_directional_mfe_mae_and_horizons(self):
         stamp = datetime(2026, 10, 15, 10, 0, tzinfo=TZ)
         alert = VolumeAlert(

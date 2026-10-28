@@ -48,7 +48,7 @@ def delivery_decision(alert: VolumeAlert) -> DeliveryDecision:
 
     if move < absolute_floor and not strong_atr_impulse:
         return DeliveryDecision(False, "insufficient absolute 5m movement")
-    if late_session and not institutional_level and not explosive:
+    if late_session and not institutional_level and not explosive and not sustained_expansion:
         return DeliveryDecision(False, "late-session move lacks a key level or explosive expansion")
     if alert.sector_context and "DIVERGENCE" in alert.sector_context and not institutional_level and not explosive:
         return DeliveryDecision(False, "sector divergence without exceptional movement")
