@@ -35,29 +35,27 @@ def delivery_decision(alert: VolumeAlert) -> DeliveryDecision:
         and "DIVERGENCE" not in alert.sector_context
         and ("LEADING" in alert.sector_context or "ALIGNED" in alert.sector_context)
     )
-    sustained_expansion = bool(
+    clean_fast_expansion = bool(
         alert.lane == "DIRECTIONAL_EXPANSION"
-        and (alert.efficiency_10m or 0) >= 0.72
-        and (alert.directional_share or 0) >= 0.70
+        and move >= max(absolute_floor, 0.50)
+        and atr_move >= 0.18
+        and efficiency >= 0.78
         and alert.directional_bars >= 4
-        and (
-            (alert.move_10m_atr or 0) >= 0.20
-            or (alert.move_15m_atr or 0) >= 0.28
-        )
+        and speed >= 2.0
     )
 
     if move < absolute_floor and not strong_atr_impulse:
         return DeliveryDecision(False, "insufficient absolute 5m movement")
-    if late_session and not institutional_level and not explosive and not sustained_expansion:
+    if late_session and not institutional_level and not explosive and not clean_fast_expansion:
         return DeliveryDecision(False, "late-session move lacks a key level or explosive expansion")
     if alert.sector_context and "DIVERGENCE" in alert.sector_context and not institutional_level and not explosive:
         return DeliveryDecision(False, "sector divergence without exceptional movement")
     if institutional_level and efficient:
         return DeliveryDecision(True, "institutional level break with directional efficiency")
-    if sustained_expansion and sector_support:
-        return DeliveryDecision(True, "sustained directional expansion with sector confirmation")
-    if sustained_expansion and max(alert.tod_rvol, alert.local_rvol or 0) >= 1.5:
-        return DeliveryDecision(True, "sustained multi-window directional expansion")
+    if sector_support and efficient and speed >= 3.0 and move >= max(absolute_floor, 0.50):
+        return DeliveryDecision(True, "sector-confirmed fast directional expansion")
+    if clean_fast_expansion:
+        return DeliveryDecision(True, "clean fast directional expansion")
     if explosive or strong_atr_impulse:
         return DeliveryDecision(True, "exceptional self-relative price expansion")
     if (
@@ -71,7 +69,8 @@ def delivery_decision(alert: VolumeAlert) -> DeliveryDecision:
         alert.lane == "DIRECTIONAL_EXPANSION"
         and alert.score >= 120
         and move >= max(absolute_floor, 0.50)
-        and sustained_expansion
+        and efficiency >= 0.72
+        and alert.directional_bars >= 3
     ):
         return DeliveryDecision(True, "high-quality persistent expansion")
     return DeliveryDecision(False, "movement lacks actionable confluence")

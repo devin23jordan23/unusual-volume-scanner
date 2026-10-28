@@ -371,8 +371,6 @@ class VolumeScannerTests(unittest.TestCase):
             lane="DIRECTIONAL_EXPANSION", score=124, confirmation_ready=True,
             efficiency=.80, directional_bars=4,
             sector_context="SECTOR LEADING / STOCK LEADING",
-            move_10m_atr=.32, move_15m_atr=.40,
-            efficiency_10m=.84, directional_share=.80,
         )
 
         self.assertTrue(delivery_decision(alert).actionable)
@@ -382,7 +380,7 @@ class VolumeScannerTests(unittest.TestCase):
         alert = VolumeAlert(
             StockSnapshot("SHOP", 149, 8_000_000, stamp, 148, 147, 150, 147),
             Severity.HIGH, "BULLISH", "DIRECTIONAL EXPANSION", (),
-            2.2, 2.8, 500_000, 74_000_000, .48, 3.2, .16, .20, .35,
+            2.2, 2.8, 500_000, 74_000_000, .44, 3.2, .16, .20, .35,
             lane="DIRECTIONAL_EXPANSION", score=110, confirmation_ready=True,
             efficiency=.76, directional_bars=3,
             sector_context="SECTOR ALIGNED",
@@ -395,18 +393,15 @@ class VolumeScannerTests(unittest.TestCase):
         self.assertFalse(decision.actionable)
         self.assertEqual(decision.reason, "movement lacks actionable confluence")
 
-    def test_orcl_style_sustained_expansion_is_actionable_without_a_level_break(self):
+    def test_orcl_style_fast_expansion_is_actionable_without_waiting_for_longer_windows(self):
         stamp = datetime(2026, 10, 28, 10, 18, tzinfo=TZ)
         alert = VolumeAlert(
             StockSnapshot("ORCL", 285, 10_000_000, stamp, 280, 279, 285, 279),
             Severity.HIGH, "BULLISH", "DIRECTIONAL EXPANSION", (),
-            1.8, 2.1, 600_000, 170_000_000, .62, 2.4, .18, .35, .50,
+            1.8, 2.1, 600_000, 170_000_000, .68, 2.4, .20, .35, .50,
             lane="DIRECTIONAL_EXPANSION", score=108, confirmation_ready=True,
             efficiency=.82, directional_bars=5,
             sector_context="SECTOR ALIGNED / STOCK LEADING",
-            price_change_10m_pct=1.10, price_change_15m_pct=1.45,
-            move_10m_atr=.26, move_15m_atr=.34,
-            efficiency_10m=.86, directional_share=.83,
         )
 
         decision = delivery_decision(alert)
@@ -414,10 +409,10 @@ class VolumeScannerTests(unittest.TestCase):
         self.assertTrue(decision.actionable)
         self.assertEqual(
             decision.reason,
-            "sustained directional expansion with sector confirmation",
+            "clean fast directional expansion",
         )
 
-    def test_nbis_style_afternoon_expansion_is_not_suppressed_by_time_of_day(self):
+    def test_nbis_style_fast_afternoon_expansion_is_not_suppressed_by_time_of_day(self):
         stamp = datetime(2026, 10, 28, 14, 20, tzinfo=TZ)
         alert = VolumeAlert(
             StockSnapshot("NBIS", 74.80, 12_000_000, stamp, 71.90, 71.50, 75, 71.70),
@@ -425,15 +420,12 @@ class VolumeScannerTests(unittest.TestCase):
             1.7, 1.9, 700_000, 52_000_000, .55, 2.2, .19, .48, .62,
             lane="DIRECTIONAL_EXPANSION", score=106, confirmation_ready=True,
             efficiency=.80, directional_bars=6,
-            price_change_10m_pct=1.15, price_change_15m_pct=1.62,
-            move_10m_atr=.27, move_15m_atr=.38,
-            efficiency_10m=.84, directional_share=.82,
         )
 
         decision = delivery_decision(alert)
 
         self.assertTrue(decision.actionable)
-        self.assertEqual(decision.reason, "sustained multi-window directional expansion")
+        self.assertEqual(decision.reason, "clean fast directional expansion")
 
     def test_outcome_store_measures_directional_mfe_mae_and_horizons(self):
         stamp = datetime(2026, 10, 15, 10, 0, tzinfo=TZ)
