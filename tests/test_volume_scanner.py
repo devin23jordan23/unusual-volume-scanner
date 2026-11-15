@@ -427,6 +427,66 @@ class VolumeScannerTests(unittest.TestCase):
         self.assertTrue(decision.actionable)
         self.assertEqual(decision.reason, "clean fast directional expansion")
 
+    def test_msft_style_steady_selloff_is_actionable_without_a_large_last_five_minutes(self):
+        stamp = datetime(2026, 11, 13, 10, 30, tzinfo=TZ)
+        alert = VolumeAlert(
+            StockSnapshot("MSFT", 496, 9_000_000, stamp, 504, 505, 505, 495.80),
+            Severity.HIGH, "BEARISH", "DIRECTIONAL EXPANSION", (),
+            1.1, 1.2, 450_000, 225_000_000, -.18, 1.1, .08, .55, .60,
+            lane="DIRECTIONAL_EXPANSION", score=96, confirmation_ready=True,
+            efficiency=.84, directional_bars=8,
+            price_change_10m_pct=-.52, price_change_15m_pct=-.86,
+            move_10m_atr=.19, move_15m_atr=.31,
+            efficiency_10m=.82, directional_share=.86,
+            price_change_30m_pct=-1.35, move_30m_atr=.47,
+            efficiency_30m=.85, price_change_1m_pct=-.04,
+            impulse_retention=.92,
+        )
+
+        decision = delivery_decision(alert)
+
+        self.assertTrue(decision.actionable)
+        self.assertEqual(
+            decision.reason,
+            "sustained directional trend at the active range edge",
+        )
+
+    def test_fading_volume_spike_is_not_actionable(self):
+        stamp = datetime(2026, 11, 13, 10, 30, tzinfo=TZ)
+        alert = VolumeAlert(
+            StockSnapshot("GEV", 890, 5_000_000, stamp, 880, 875, 900, 878),
+            Severity.HIGH, "BULLISH", "VOLUME IGNITION", (),
+            3.2, 4.0, 300_000, 267_000_000, .82, 3.5, .25, .40, .50,
+            lane="VOLUME_IGNITION", score=100, confirmation_ready=True,
+            efficiency=.82, directional_bars=4,
+            price_change_1m_pct=-.18, impulse_retention=.45,
+        )
+
+        decision = delivery_decision(alert)
+
+        self.assertFalse(decision.actionable)
+        self.assertEqual(decision.reason, "movement lacks actionable confluence")
+
+    def test_rolling_features_measure_impulse_retention(self):
+        rolling = RollingStockState()
+        profile = replace(self.profile, atr14=10)
+        start = datetime(2026, 11, 13, 10, 0, tzinfo=TZ)
+        prices = [100, 101, 102, 103, 104, 105, 103]
+        for offset, price in enumerate(prices[:-1]):
+            rolling.record(StockSnapshot(
+                "GEV", price, 1_000_000 + offset * 100_000,
+                start + timedelta(minutes=offset), 100, 99, max(prices[:offset + 1]), 100,
+            ))
+        snapshot = StockSnapshot(
+            "GEV", prices[-1], 1_700_000, start + timedelta(minutes=6),
+            100, 99, 105, 100,
+        )
+
+        features = rolling.features(snapshot, profile)
+
+        self.assertAlmostEqual(features.impulse_retention or 0, .5, places=2)
+        self.assertLess(features.change_1m_pct or 0, 0)
+
     def test_outcome_store_measures_directional_mfe_mae_and_horizons(self):
         stamp = datetime(2026, 10, 15, 10, 0, tzinfo=TZ)
         alert = VolumeAlert(
@@ -459,7 +519,9 @@ class VolumeScannerTests(unittest.TestCase):
             directional_bars=5, price_change_10m_pct=1.10,
             price_change_15m_pct=1.45, move_10m_atr=.26,
             move_15m_atr=.34, efficiency_10m=.86,
-            directional_share=.83,
+            directional_share=.83, price_change_30m_pct=1.80,
+            move_30m_atr=.44, efficiency_30m=.88,
+            price_change_1m_pct=.12, impulse_retention=.95,
         )
         with tempfile.TemporaryDirectory() as directory:
             store = AlertOutcomeStore(f"{directory}/outcomes.sqlite3")
@@ -470,6 +532,9 @@ class VolumeScannerTests(unittest.TestCase):
         self.assertAlmostEqual(row["move_15m_atr"], .34)
         self.assertAlmostEqual(row["efficiency_10m"], .86)
         self.assertAlmostEqual(row["directional_share"], .83)
+        self.assertAlmostEqual(row["move_30m_atr"], .44)
+        self.assertAlmostEqual(row["efficiency_30m"], .88)
+        self.assertAlmostEqual(row["impulse_retention"], .95)
 
     def test_outcome_store_deduplicates_repeated_suppression_and_writes_review(self):
         stamp = datetime(2026, 10, 15, 10, 0, tzinfo=TZ)
@@ -709,6 +774,24 @@ class VolumeScannerTests(unittest.TestCase):
         directional = [item for item in alerts if item.lane == "DIRECTIONAL_EXPANSION"]
         self.assertEqual(len(directional), 1)
         self.assertTrue(directional[0].confirmation_ready)
+
+    def test_established_selloff_keeps_bearish_direction_through_a_small_pullback(self):
+        stamp = datetime(2026, 11, 13, 10, 30, tzinfo=TZ)
+        snapshot = StockSnapshot("MSFT", 496, 9_000_000, stamp, 504, 505, 505, 495.80)
+        profile = replace(self.profile, symbol="MSFT", atr14=16.0,
+                          minute_volume=tuple([50_000] * 390))
+        features = MovementFeatures(
+            450_000, .05, -.35, -.80, .03, .14, .30,
+            .55, .82, 6, .83, 500, True, False, 30, True,
+            -1.20, .45, .84, .02, .80,
+        )
+
+        alerts = evaluate_lanes(snapshot, profile, features, Thresholds())
+        directional = [item for item in alerts if item.lane == "DIRECTIONAL_EXPANSION"]
+
+        self.assertEqual(len(directional), 1)
+        self.assertEqual(directional[0].direction, "BEARISH")
+        self.assertEqual(directional[0].setup, "SUSTAINED TREND")
 
     def test_fast_liquid_impulse_does_not_require_fresh_daily_high(self):
         stamp = datetime(2026, 9, 24, 12, 17, tzinfo=TZ)

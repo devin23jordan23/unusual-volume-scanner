@@ -99,6 +99,11 @@ def evaluate_lanes(snapshot: StockSnapshot, profile: VolumeProfile, features: Mo
                 move_15m_atr=features.move_15m_atr,
                 efficiency_10m=features.efficiency_10m,
                 directional_share=features.directional_share,
+                price_change_30m_pct=features.change_30m_pct,
+                move_30m_atr=features.move_30m_atr,
+                efficiency_30m=features.efficiency_30m,
+                price_change_1m_pct=features.change_1m_pct,
+                impulse_retention=features.impulse_retention,
             ))
     directional = evaluate_directional(snapshot, profile, features, thresholds)
     if directional:
@@ -220,8 +225,9 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
         "fresh range break" if features.fresh_level_break else
         "fast liquid impulse" if standalone_fast_impulse else "pressing fresh daily extreme",
     )
+    setup = "SUSTAINED TREND" if persistent_trend or extended_trend else "DIRECTIONAL EXPANSION"
     return VolumeAlert(
-        snapshot, severity, direction_value, "DIRECTIONAL EXPANSION", reasons,
+        snapshot, severity, direction_value, setup, reasons,
         tod_rvol, local_rvol, features.volume_5m,
         dollar_volume_5m,
         features.change_5m_pct, speed, features.move_5m_atr,
@@ -233,13 +239,27 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
         move_15m_atr=features.move_15m_atr,
         efficiency_10m=features.efficiency_10m,
         directional_share=features.directional_share,
+        price_change_30m_pct=features.change_30m_pct,
+        move_30m_atr=features.move_30m_atr,
+        efficiency_30m=features.efficiency_30m,
+        price_change_1m_pct=features.change_1m_pct,
+        impulse_retention=features.impulse_retention,
     )
 
 
 def signed_direction(features: MovementFeatures) -> int:
-    value = features.change_5m_pct
-    if value in (None, 0):
-        value = features.change_10m_pct
+    fast = 0 if features.change_5m_pct in (None, 0) else (1 if features.change_5m_pct > 0 else -1)
+    trend_value = features.change_15m_pct
+    if trend_value in (None, 0):
+        trend_value = features.change_30m_pct
+    trend = 0 if trend_value in (None, 0) else (1 if trend_value > 0 else -1)
+    trend_is_established = max(features.move_15m_atr or 0, features.move_30m_atr or 0) >= 0.18
+    fast_is_small = (features.move_5m_atr or 0) < 0.12
+    if trend and trend_is_established and (fast == 0 or fast == trend or fast_is_small):
+        return trend
+    if fast:
+        return fast
+    value = features.change_10m_pct
     return 0 if value in (None, 0) else (1 if value > 0 else -1)
 
 

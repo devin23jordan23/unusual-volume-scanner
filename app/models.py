@@ -98,6 +98,8 @@ class MovementFeatures:
     change_30m_pct: float | None = None
     move_30m_atr: float | None = None
     efficiency_30m: float | None = None
+    change_1m_pct: float | None = None
+    impulse_retention: float | None = None
 
 
 class Severity(str, Enum):
@@ -142,3 +144,8 @@ class VolumeAlert:
     move_15m_atr: float | None = None
     efficiency_10m: float | None = None
     directional_share: float | None = None
+    price_change_30m_pct: float | None = None
+    move_30m_atr: float | None = None
+    efficiency_30m: float | None = None
+    price_change_1m_pct: float | None = None
+    impulse_retention: float | None = None

@@ -27,8 +27,18 @@ def delivery_decision(alert: VolumeAlert) -> DeliveryDecision:
     is_etf = alert.snapshot.symbol in ETF_SYMBOLS
     absolute_floor = 0.25 if is_etf else 0.40
     efficient = efficiency >= 0.68
-    explosive = move >= 0.75 and speed >= 2.5 and efficiency >= 0.70
-    strong_atr_impulse = atr_move >= 0.22 and move >= absolute_floor and efficiency >= 0.72
+    direction = 1 if alert.direction == "BULLISH" else -1
+    impulse_intact = alert.impulse_retention is None or alert.impulse_retention >= 0.75
+    recent_change = direction * (alert.price_change_1m_pct or 0)
+    recent_move_intact = alert.price_change_1m_pct is None or recent_change >= -0.08
+    explosive = (
+        move >= 0.75 and speed >= 2.5 and efficiency >= 0.70
+        and impulse_intact and recent_move_intact
+    )
+    strong_atr_impulse = (
+        atr_move >= 0.22 and move >= absolute_floor and efficiency >= 0.72
+        and impulse_intact and recent_move_intact
+    )
     institutional_level = alert.level_tier == 1
     sector_support = bool(
         alert.sector_context
@@ -42,17 +52,40 @@ def delivery_decision(alert: VolumeAlert) -> DeliveryDecision:
         and efficiency >= 0.78
         and alert.directional_bars >= 4
         and speed >= 2.0
+        and impulse_intact
+        and recent_move_intact
+    )
+    position = alert.snapshot.range_position
+    at_active_edge = position is not None and (
+        position >= 0.75 if direction > 0 else position <= 0.25
+    )
+    sustained_trend = bool(
+        alert.lane == "DIRECTIONAL_EXPANSION"
+        and at_active_edge
+        and alert.directional_bars >= 4
+        and (alert.directional_share or 0) >= 0.75
+        and max(alert.efficiency_10m or 0, alert.efficiency_30m or 0) >= 0.72
+        and (
+            (alert.move_15m_atr or 0) >= 0.28
+            or (alert.move_30m_atr or 0) >= 0.35
+        )
+        and atr_move >= 0.06
+        and recent_move_intact
     )
 
-    if move < absolute_floor and not strong_atr_impulse:
+    if move < absolute_floor and not strong_atr_impulse and not sustained_trend:
         return DeliveryDecision(False, "insufficient absolute 5m movement")
-    if late_session and not institutional_level and not explosive and not clean_fast_expansion:
+    if late_session and not institutional_level and not explosive and not clean_fast_expansion and not sustained_trend:
         return DeliveryDecision(False, "late-session move lacks a key level or explosive expansion")
-    if alert.sector_context and "DIVERGENCE" in alert.sector_context and not institutional_level and not explosive:
+    if (alert.sector_context and "DIVERGENCE" in alert.sector_context
+            and not institutional_level and not explosive and not sustained_trend):
         return DeliveryDecision(False, "sector divergence without exceptional movement")
-    if institutional_level and efficient:
+    if institutional_level and efficient and impulse_intact and recent_move_intact:
         return DeliveryDecision(True, "institutional level break with directional efficiency")
-    if sector_support and efficient and speed >= 3.0 and move >= max(absolute_floor, 0.50):
+    if sustained_trend:
+        return DeliveryDecision(True, "sustained directional trend at the active range edge")
+    if (sector_support and efficient and speed >= 3.0
+            and move >= max(absolute_floor, 0.50) and impulse_intact and recent_move_intact):
         return DeliveryDecision(True, "sector-confirmed fast directional expansion")
     if clean_fast_expansion:
         return DeliveryDecision(True, "clean fast directional expansion")
@@ -63,6 +96,8 @@ def delivery_decision(alert: VolumeAlert) -> DeliveryDecision:
         and (alert.atr_progress or 0) >= 0.30
         and move >= max(absolute_floor, 0.50)
         and efficiency >= 0.60
+        and impulse_intact
+        and recent_move_intact
     ):
         return DeliveryDecision(True, "confirmed opening drive")
     if (
@@ -71,6 +106,8 @@ def delivery_decision(alert: VolumeAlert) -> DeliveryDecision:
         and move >= max(absolute_floor, 0.50)
         and efficiency >= 0.72
         and alert.directional_bars >= 3
+        and impulse_intact
+        and recent_move_intact
     ):
         return DeliveryDecision(True, "high-quality persistent expansion")
     return DeliveryDecision(False, "movement lacks actionable confluence")

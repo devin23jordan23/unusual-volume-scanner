@@ -35,14 +35,19 @@ class AlertOutcomeStore:
                 move_5m_pct REAL,
                 move_10m_pct REAL,
                 move_15m_pct REAL,
+                move_30m_pct REAL,
+                move_1m_pct REAL,
                 move_5m_atr REAL,
                 move_10m_atr REAL,
                 move_15m_atr REAL,
+                move_30m_atr REAL,
                 atr_progress REAL,
                 efficiency REAL,
                 efficiency_10m REAL,
+                efficiency_30m REAL,
                 directional_bars INTEGER NOT NULL,
                 directional_share REAL,
+                impulse_retention REAL,
                 sector_context TEXT,
                 crossed_levels TEXT NOT NULL,
                 delivery_status TEXT NOT NULL,
@@ -65,10 +70,15 @@ class AlertOutcomeStore:
         self._ensure_columns({
             "move_10m_pct": "REAL",
             "move_15m_pct": "REAL",
+            "move_30m_pct": "REAL",
+            "move_1m_pct": "REAL",
             "move_10m_atr": "REAL",
             "move_15m_atr": "REAL",
+            "move_30m_atr": "REAL",
             "efficiency_10m": "REAL",
+            "efficiency_30m": "REAL",
             "directional_share": "REAL",
+            "impulse_retention": "REAL",
         })
         self.connection.commit()
 
@@ -96,11 +106,12 @@ class AlertOutcomeStore:
             INSERT INTO alert_outcomes (
                 symbol, alert_time, alert_epoch, alert_price, direction, lane, setup,
                 severity, score, tod_rvol, local_rvol, move_5m_pct, move_5m_atr,
-                move_10m_pct, move_15m_pct, move_10m_atr, move_15m_atr,
-                atr_progress, efficiency, efficiency_10m, directional_bars,
-                directional_share, sector_context,
+                move_10m_pct, move_15m_pct, move_30m_pct, move_1m_pct,
+                move_10m_atr, move_15m_atr, move_30m_atr,
+                atr_progress, efficiency, efficiency_10m, efficiency_30m,
+                directional_bars, directional_share, impulse_retention, sector_context,
                 crossed_levels, delivery_status, delivery_reason, last_seen_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(symbol, alert_time, lane) DO UPDATE SET
                 delivery_status=excluded.delivery_status,
                 delivery_reason=excluded.delivery_reason
@@ -110,9 +121,11 @@ class AlertOutcomeStore:
             alert.lane, alert.setup, alert.severity.value, alert.score, alert.tod_rvol,
             alert.local_rvol, alert.price_change_5m_pct, alert.move_5m_atr,
             alert.price_change_10m_pct, alert.price_change_15m_pct,
-            alert.move_10m_atr, alert.move_15m_atr,
+            alert.price_change_30m_pct, alert.price_change_1m_pct,
+            alert.move_10m_atr, alert.move_15m_atr, alert.move_30m_atr,
             alert.atr_progress, alert.efficiency, alert.efficiency_10m,
-            alert.directional_bars, alert.directional_share,
+            alert.efficiency_30m, alert.directional_bars, alert.directional_share,
+            alert.impulse_retention,
             alert.sector_context, json.dumps(alert.crossed_levels), status, reason,
             alert.snapshot.timestamp.isoformat(),
         ))

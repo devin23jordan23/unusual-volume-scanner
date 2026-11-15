@@ -52,7 +52,15 @@ class RollingStockState:
         change_10m = window_change(history, 600)
         change_15m = window_change(history, 900)
         change_30m = window_change(history, 1800)
-        direction = sign(change_5m if change_5m not in (None, 0) else change_10m)
+        change_1m = window_change(history, 60)
+        move_5m_atr = atr_displacement(snapshot.price, change_5m, profile.atr14)
+        move_10m_atr = atr_displacement(snapshot.price, change_10m, profile.atr14)
+        move_15m_atr = atr_displacement(snapshot.price, change_15m, profile.atr14)
+        move_30m_atr = atr_displacement(snapshot.price, change_30m, profile.atr14)
+        direction = dominant_direction(
+            change_5m, move_5m_atr, change_10m, change_15m,
+            move_15m_atr, change_30m, move_30m_atr,
+        )
         bars, share = directional_path(history, direction, 600)
         if share is None:
             bars, share = directional_path(history, direction, 300)
@@ -61,16 +69,16 @@ class RollingStockState:
         crossed = bool(aligned and prior_vwap is not None and prior_price is not None and direction * (prior_price - prior_vwap) <= 0)
         return MovementFeatures(
             window_volume(history, 300), change_5m, change_10m, change_15m,
-            atr_displacement(snapshot.price, change_5m, profile.atr14),
-            atr_displacement(snapshot.price, change_10m, profile.atr14),
-            atr_displacement(snapshot.price, change_15m, profile.atr14),
+            move_5m_atr, move_10m_atr, move_15m_atr,
             path_efficiency(history, 300), path_efficiency(history, 600),
             bars, share, vwap, aligned, crossed,
             new_extreme_age(history, snapshot, direction),
             fresh_level_break(history, snapshot, direction),
             change_30m,
-            atr_displacement(snapshot.price, change_30m, profile.atr14),
+            move_30m_atr,
             path_efficiency(history, 1800),
+            change_1m,
+            impulse_retention(history, 300, direction),
         )
 
 
@@ -232,10 +240,22 @@ def severity_rank(value: str) -> int:
 
 
 def mature_directional(alert: VolumeAlert, thresholds: Thresholds) -> bool:
+    sustained = bool(
+        alert.directional_bars >= 4
+        and (alert.directional_share or 0) >= 0.75
+        and max(alert.efficiency_10m or 0, alert.efficiency_30m or 0) >= 0.72
+        and (
+            (alert.move_15m_atr or 0) >= thresholds.min_directional_15m_atr
+            or (alert.move_30m_atr or 0) >= thresholds.min_directional_30m_atr
+        )
+    )
     return bool(
         alert.lane == "DIRECTIONAL_EXPANSION"
         and alert.confirmation_ready
-        and alert.directional_bars >= max(6, thresholds.min_directional_bars * 2)
+        and (
+            alert.directional_bars >= max(6, thresholds.min_directional_bars * 2)
+            or sustained
+        )
     )
 
 
@@ -304,6 +324,18 @@ def path_efficiency(history: list[StockSnapshot], seconds: int) -> float | None:
     return abs(points[-1].price - points[0].price) / path if path > 0 else 0.0
 
 
+def impulse_retention(history: list[StockSnapshot], seconds: int, direction: int) -> float | None:
+    points = window_points(history, seconds)
+    if len(points) < 3 or direction == 0:
+        return None
+    baseline = direction * points[0].price
+    current = direction * points[-1].price
+    excursion = max(direction * item.price for item in points) - baseline
+    if excursion <= 0:
+        return 0.0
+    return max(0.0, min((current - baseline) / excursion, 1.0))
+
+
 def directional_path(history: list[StockSnapshot], direction: int, seconds: int) -> tuple[int, float | None]:
     by_minute: dict[datetime, StockSnapshot] = {}
     for item in window_points(history, seconds):
@@ -370,3 +402,21 @@ def atr_displacement(price: float, change_pct: float | None, atr: float) -> floa
 
 def sign(value: float | None) -> int:
     return 0 if value in (None, 0) else (1 if value > 0 else -1)
+
+
+def dominant_direction(
+    change_5m: float | None,
+    move_5m_atr: float | None,
+    change_10m: float | None,
+    change_15m: float | None,
+    move_15m_atr: float | None,
+    change_30m: float | None,
+    move_30m_atr: float | None,
+) -> int:
+    fast = sign(change_5m)
+    trend = sign(change_15m if change_15m not in (None, 0) else change_30m)
+    trend_is_established = max(move_15m_atr or 0, move_30m_atr or 0) >= 0.18
+    fast_is_small = (move_5m_atr or 0) < 0.12
+    if trend and trend_is_established and (fast == 0 or fast == trend or fast_is_small):
+        return trend
+    return fast or sign(change_10m)
