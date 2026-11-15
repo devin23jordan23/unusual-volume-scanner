@@ -11,6 +11,7 @@ def evaluate(
     volume_5m: int | None,
     price_change_5m_pct: float | None,
     thresholds: Thresholds,
+    allow_interest: bool = False,
 ) -> VolumeAlert | None:
     idx = minute_index(snapshot.timestamp)
     if idx is None or snapshot.price < thresholds.min_price or snapshot.price > thresholds.max_price:
@@ -48,11 +49,19 @@ def evaluate(
     )
     movement_ok = fresh_move_ok or (idx < 10 and opening_move_ok)
     volume_ok = opening_volume_ok if idx < 10 else fresh_volume_ok
-    if not volume_ok or not movement_ok or dollar_volume_5m < thresholds.min_5m_dollar_volume:
+    if not volume_ok or dollar_volume_5m < thresholds.min_5m_dollar_volume:
+        return None
+    interest_only = not movement_ok
+    if interest_only and not allow_interest:
         return None
 
     direction_value = direction(snapshot, price_change_5m_pct)
-    setup = "OPENING DRIVE" if idx < 10 else "VOLUME IGNITION" if (local_rvol or 0) >= thresholds.min_local_rvol else "IN-PLAY CONTINUATION"
+    setup = (
+        "INTERESTING VOLUME" if interest_only else
+        "OPENING DRIVE" if idx < 10 else
+        "VOLUME IGNITION" if (local_rvol or 0) >= thresholds.min_local_rvol else
+        "IN-PLAY CONTINUATION"
+    )
     reasons = [f"{tod_rvol:.2f}x time-of-day RVOL"]
     if local_rvol is not None and local_rvol >= thresholds.min_local_rvol:
         reasons.append(f"{local_rvol:.2f}x local 5m RVOL")
@@ -63,7 +72,10 @@ def evaluate(
     if confirms_edge(snapshot, direction_value):
         reasons.append("pressing active side of day range")
 
-    severity = classify(tod_rvol, local_rvol, atr_progress, speed_ratio, move_5m_atr, idx < 10, thresholds)
+    severity = (
+        Severity.WATCH if interest_only else
+        classify(tod_rvol, local_rvol, atr_progress, speed_ratio, move_5m_atr, idx < 10, thresholds)
+    )
     return VolumeAlert(
         snapshot, severity, direction_value, setup, tuple(reasons), tod_rvol,
         local_rvol, volume_5m, dollar_volume_5m, price_change_5m_pct,
@@ -74,13 +86,37 @@ def evaluate(
 def evaluate_lanes(snapshot: StockSnapshot, profile: VolumeProfile, features: MovementFeatures,
                    thresholds: Thresholds) -> list[VolumeAlert]:
     proposals = []
-    volume = evaluate(snapshot, profile, features.volume_5m, features.change_5m_pct, thresholds)
+    volume = evaluate(
+        snapshot, profile, features.volume_5m, features.change_5m_pct,
+        thresholds, allow_interest=True,
+    )
     if volume:
         idx = minute_index(snapshot.timestamp) or 0
         efficient = (features.efficiency_5m or 0) >= thresholds.min_directional_efficiency * 0.8
         persistent = features.directional_bars >= max(2, thresholds.min_directional_bars - 1)
-        if idx < 10 or (efficient and persistent):
-            score = volume_score(volume, features, thresholds)
+        score = volume_score(volume, features, thresholds)
+        if volume.setup == "INTERESTING VOLUME":
+            proposals.append(replace(
+                volume,
+                lane="VOLUME_INTEREST",
+                score=score,
+                confirmation_ready=False,
+                efficiency=features.efficiency_5m,
+                directional_bars=features.directional_bars,
+                vwap=features.vwap,
+                price_change_10m_pct=features.change_10m_pct,
+                price_change_15m_pct=features.change_15m_pct,
+                move_10m_atr=features.move_10m_atr,
+                move_15m_atr=features.move_15m_atr,
+                efficiency_10m=features.efficiency_10m,
+                directional_share=features.directional_share,
+                price_change_30m_pct=features.change_30m_pct,
+                move_30m_atr=features.move_30m_atr,
+                efficiency_30m=features.efficiency_30m,
+                price_change_1m_pct=features.change_1m_pct,
+                impulse_retention=features.impulse_retention,
+            ))
+        elif idx < 10 or (efficient and persistent):
             confirmation_ready = (
                 confirms_edge(snapshot, volume.direction)
                 and (volume.atr_progress or 0) >= thresholds.min_atr_progress

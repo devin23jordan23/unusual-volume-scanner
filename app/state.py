@@ -169,7 +169,7 @@ class CandidateBook:
                 return []
             if best.direction != record.get("direction"):
                 self._arm(best)
-                return []
+                return [best] if immediate_candidate(best, thresholds) else []
             if now - float(record.get("last_seen_at", armed_at)) > 90:
                 self._arm(best)
                 return []

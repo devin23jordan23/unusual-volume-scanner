@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from dataclasses import replace
@@ -201,6 +202,9 @@ class VolumeScannerTests(unittest.TestCase):
             "BE", "GEV", "FCEL", "PLUG", "FLNC", "EOSE", "RUN",
         }.issubset(DEFAULT_UNIVERSE))
 
+    def test_isrg_and_nrg_are_removed_from_default_universe(self):
+        self.assertTrue({"ISRG", "NRG"}.isdisjoint(DEFAULT_UNIVERSE))
+
     def test_sector_leadership_boosts_priority_without_filtering(self):
         stamp = datetime(2026, 10, 6, 10, 0, tzinfo=TZ)
         snapshot = StockSnapshot("MU", 205, 5_000_000, stamp, 200, 199, 205, 199)
@@ -391,7 +395,7 @@ class VolumeScannerTests(unittest.TestCase):
         decision = delivery_decision(alert)
 
         self.assertFalse(decision.actionable)
-        self.assertEqual(decision.reason, "movement lacks actionable confluence")
+        self.assertEqual(decision.reason, "insufficient absolute 5m movement")
 
     def test_orcl_style_fast_expansion_is_actionable_without_waiting_for_longer_windows(self):
         stamp = datetime(2026, 10, 28, 10, 18, tzinfo=TZ)
@@ -466,6 +470,55 @@ class VolumeScannerTests(unittest.TestCase):
 
         self.assertFalse(decision.actionable)
         self.assertEqual(decision.reason, "movement lacks actionable confluence")
+
+    def test_extreme_shop_volume_without_matching_price_expansion_is_not_actionable(self):
+        stamp = datetime(2026, 11, 13, 10, 30, tzinfo=TZ)
+        alert = VolumeAlert(
+            StockSnapshot("SHOP", 149.04, 9_000_000, stamp, 148.50, 147, 150, 147),
+            Severity.EXTREME, "BULLISH", "VOLUME IGNITION", (),
+            5.54, 5.54, 700_000, 104_000_000, .55, 3.0, .16, .20, .35,
+            lane="VOLUME_IGNITION", score=100, confirmation_ready=True,
+            efficiency=.45, directional_bars=2,
+            price_change_1m_pct=.01, impulse_retention=.90,
+        )
+
+        decision = delivery_decision(alert)
+
+        self.assertFalse(decision.actionable)
+        self.assertEqual(decision.reason, "extreme local volume lacks matching price expansion")
+
+    def test_ordinary_afternoon_key_level_break_does_not_bypass_quality(self):
+        stamp = datetime(2026, 11, 13, 15, 0, tzinfo=TZ)
+        alert = VolumeAlert(
+            StockSnapshot("GEV", 890, 7_000_000, stamp, 882, 875, 891, 878),
+            Severity.HIGH, "BULLISH", "VOLUME IGNITION", (),
+            2.4, 2.8, 250_000, 222_000_000, .55, 2.2, .19, .35, .45,
+            lane="VOLUME_IGNITION", score=92, confirmation_ready=True,
+            efficiency=.80, directional_bars=4,
+            crossed_levels=("Previous-Day High $889.50",), level_tier=1,
+            price_change_1m_pct=.04, impulse_retention=.90,
+        )
+
+        decision = delivery_decision(alert)
+
+        self.assertFalse(decision.actionable)
+        self.assertEqual(decision.reason, "afternoon move lacks fresh exceptional expansion")
+
+    def test_tsla_style_late_ignition_with_real_expansion_remains_actionable(self):
+        stamp = datetime(2026, 11, 13, 15, 8, tzinfo=TZ)
+        alert = VolumeAlert(
+            StockSnapshot("TSLA", 308, 18_000_000, stamp, 314, 315, 315, 307.80),
+            Severity.EXTREME, "BEARISH", "VOLUME IGNITION", (),
+            3.8, 5.47, 1_500_000, 462_000_000, -1.94, 5.2, .31, .48, .60,
+            lane="VOLUME_IGNITION", score=100, confirmation_ready=True,
+            efficiency=.84, directional_bars=4,
+            price_change_1m_pct=-.20, impulse_retention=.92,
+        )
+
+        decision = delivery_decision(alert)
+
+        self.assertTrue(decision.actionable)
+        self.assertEqual(decision.reason, "exceptional self-relative price expansion")
 
     def test_rolling_features_measure_impulse_retention(self):
         rolling = RollingStockState()
@@ -555,6 +608,29 @@ class VolumeScannerTests(unittest.TestCase):
 
         self.assertEqual(count, 1)
         self.assertIsNotNone(report)
+
+    def test_outcome_store_deduplicates_volume_candidates_and_reports_them(self):
+        stamp = datetime(2026, 10, 15, 10, 0, tzinfo=TZ)
+        alert = VolumeAlert(
+            StockSnapshot("SHOP", 149, 9_000_000, stamp, 148.50, 147, 150, 147),
+            Severity.WATCH, "BULLISH", "INTERESTING VOLUME", (),
+            3.0, 4.0, 700_000, 104_000_000, .10, .5, .03, .10, .20,
+            lane="VOLUME_INTEREST", score=55,
+        )
+        reason = "interesting volume awaiting price confirmation"
+        with tempfile.TemporaryDirectory() as directory:
+            store = AlertOutcomeStore(f"{directory}/outcomes.sqlite3")
+            store.record(alert, "CANDIDATE_ONLY", reason)
+            store.record(replace(alert, snapshot=replace(
+                alert.snapshot, timestamp=stamp + timedelta(seconds=30),
+            )), "CANDIDATE_ONLY", reason)
+            count = store.connection.execute("SELECT count(*) FROM alert_outcomes").fetchone()[0]
+            report_path = store.write_daily_report("2026-10-15", f"{directory}/reviews")
+            with open(report_path) as handle:
+                report = json.load(handle)
+
+        self.assertEqual(count, 1)
+        self.assertEqual(report["volume_candidates"]["signals"], 1)
 
     def test_extended_thirty_minute_trend_catches_a_steady_mu_move(self):
         stamp = datetime(2026, 10, 7, 10, 10, tzinfo=TZ)
@@ -692,6 +768,70 @@ class VolumeScannerTests(unittest.TestCase):
         snapshot = StockSnapshot("COIN", 307, 5_000_000, stamp, 300, 299, 308, 299)
         alert = evaluate(snapshot, self.profile, 1_000_000, 1.0, Thresholds(min_5m_dollar_volume=1))
         self.assertIsNotNone(alert)
+
+    def test_unusual_volume_without_price_expansion_creates_only_a_backend_candidate(self):
+        stamp = datetime(2026, 9, 18, 10, 0, tzinfo=TZ)
+        snapshot = StockSnapshot("SHOP", 149, 3_000_000, stamp, 148.80, 148, 149.20, 148)
+        profile = replace(
+            self.profile,
+            symbol="SHOP",
+            atr14=6.0,
+            minute_volume=tuple([20_000] * 390),
+            move_5m_pct=tuple([.20] * 390),
+        )
+        features = MovementFeatures(
+            500_000, .10, .12, .15, .02, .03, .04,
+            .40, .42, 1, .55, 148.90, True, False, 600, False,
+            change_1m_pct=.01, impulse_retention=.90,
+        )
+
+        alerts = evaluate_lanes(snapshot, profile, features, Thresholds())
+
+        self.assertEqual(len(alerts), 1)
+        self.assertEqual(alerts[0].lane, "VOLUME_INTEREST")
+        self.assertEqual(alerts[0].setup, "INTERESTING VOLUME")
+        self.assertFalse(alerts[0].confirmation_ready)
+        self.assertFalse(delivery_decision(alerts[0]).actionable)
+
+    def test_backend_volume_candidate_promotes_immediately_when_price_ignites(self):
+        stamp = datetime(2026, 9, 18, 10, 0, tzinfo=TZ)
+        quiet_snapshot = StockSnapshot("SHOP", 149, 3_000_000, stamp, 149.20, 148, 149.30, 148)
+        interest = VolumeAlert(
+            quiet_snapshot, Severity.WATCH, "BEARISH", "INTERESTING VOLUME", (),
+            3.0, 4.0, 500_000, 74_000_000, -.10, .5, .02, .05, .20,
+            lane="VOLUME_INTEREST", score=55,
+        )
+        moving_snapshot = replace(
+            quiet_snapshot, price=151, volume=3_800_000,
+            timestamp=stamp + timedelta(minutes=1), high_price=151,
+        )
+        moving = VolumeAlert(
+            moving_snapshot, Severity.HIGH, "BULLISH", "DIRECTIONAL EXPANSION", (),
+            3.2, 3.0, 600_000, 90_000_000, .80, 3.2, .24, .30, .40,
+            lane="DIRECTIONAL_EXPANSION", score=88, confirmation_ready=True,
+            efficiency=.82, directional_bars=3, directional_share=.80,
+        )
+        quiet_features = MovementFeatures(
+            500_000, -.10, -.10, -.10, .02, .02, .02,
+            .40, .40, 1, .55, 149, True, False, 600, False,
+        )
+        moving_features = replace(
+            quiet_features, change_5m_pct=.80, move_5m_atr=.24,
+            efficiency_5m=.82, directional_bars=3, directional_share=.80,
+            fresh_level_break=True,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            book = CandidateBook(f"{directory}/candidates.json")
+            self.assertEqual(
+                book.observe(quiet_snapshot, [interest], quiet_features, 6, Thresholds()),
+                [],
+            )
+            ready = book.observe(
+                moving_snapshot, [moving], moving_features, 6, Thresholds(),
+            )
+
+        self.assertEqual(ready, [moving])
 
     def test_discord_payload_is_tight(self):
         stamp = datetime(2026, 9, 18, 9, 34, 59, tzinfo=TZ)

@@ -109,6 +109,13 @@ class VolumeScanner:
             self.bootstrap_mover(snapshot, profile)
             features = self.rolling.features(snapshot, profile)
             proposals = evaluate_lanes(snapshot, profile, features, self.settings.thresholds)
+            for proposal in proposals:
+                if proposal.lane == "VOLUME_INTEREST":
+                    self.outcomes.record(
+                        proposal,
+                        "CANDIDATE_ONLY",
+                        "interesting volume awaiting price confirmation",
+                    )
             sector = SECTOR_BENCHMARKS.get(snapshot.symbol)
             if sector:
                 proposals = [

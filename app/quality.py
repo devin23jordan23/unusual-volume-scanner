@@ -23,9 +23,10 @@ def delivery_decision(alert: VolumeAlert) -> DeliveryDecision:
     speed = alert.speed_ratio or 0
     atr_move = alert.move_5m_atr or 0
     idx = minute_index(alert.snapshot.timestamp)
-    late_session = idx is not None and idx >= 150
+    midday = idx is not None and idx >= 120
+    afternoon = idx is not None and idx >= 270
     is_etf = alert.snapshot.symbol in ETF_SYMBOLS
-    absolute_floor = 0.25 if is_etf else 0.40
+    absolute_floor = 0.25 if is_etf else 0.50
     efficient = efficiency >= 0.68
     direction = 1 if alert.direction == "BULLISH" else -1
     impulse_intact = alert.impulse_retention is None or alert.impulse_retention >= 0.75
@@ -72,15 +73,33 @@ def delivery_decision(alert: VolumeAlert) -> DeliveryDecision:
         and atr_move >= 0.06
         and recent_move_intact
     )
+    exceptional_afternoon_impulse = bool(
+        explosive
+        or clean_fast_expansion
+        or sustained_trend
+        or (
+            strong_atr_impulse
+            and move >= 0.75
+            and (alert.local_rvol or 0) >= 3.0
+        )
+    )
 
     if move < absolute_floor and not strong_atr_impulse and not sustained_trend:
         return DeliveryDecision(False, "insufficient absolute 5m movement")
-    if late_session and not institutional_level and not explosive and not clean_fast_expansion and not sustained_trend:
-        return DeliveryDecision(False, "late-session move lacks a key level or explosive expansion")
+    if ((alert.local_rvol or 0) >= 5.0 and not explosive
+            and not clean_fast_expansion and not sustained_trend):
+        return DeliveryDecision(False, "extreme local volume lacks matching price expansion")
+    if afternoon and not exceptional_afternoon_impulse:
+        return DeliveryDecision(False, "afternoon move lacks fresh exceptional expansion")
+    if (midday and not afternoon and not strong_atr_impulse
+            and not clean_fast_expansion and not sustained_trend):
+        return DeliveryDecision(False, "midday move lacks confirmed price expansion")
     if (alert.sector_context and "DIVERGENCE" in alert.sector_context
             and not institutional_level and not explosive and not sustained_trend):
         return DeliveryDecision(False, "sector divergence without exceptional movement")
-    if institutional_level and efficient and impulse_intact and recent_move_intact:
+    if (institutional_level and efficient and atr_move >= 0.18
+            and move >= absolute_floor and speed >= 2.0
+            and impulse_intact and recent_move_intact):
         return DeliveryDecision(True, "institutional level break with directional efficiency")
     if sustained_trend:
         return DeliveryDecision(True, "sustained directional trend at the active range edge")

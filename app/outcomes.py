@@ -94,7 +94,7 @@ class AlertOutcomeStore:
                 )
 
     def record(self, alert: VolumeAlert, status: str, reason: str) -> None:
-        if status.startswith("SUPPRESSED"):
+        if status.startswith("SUPPRESSED") or status == "CANDIDATE_ONLY":
             recent = self.connection.execute(
                 "SELECT alert_epoch FROM alert_outcomes WHERE symbol=? AND lane=? "
                 "AND delivery_status=? AND delivery_reason=? ORDER BY alert_epoch DESC LIMIT 1",
@@ -195,6 +195,9 @@ class AlertOutcomeStore:
             "definition": "worked = at least 0.75% MFE and positive 15-minute continuation",
             "delivered": outcome_metrics([row for row in rows if row["delivery_status"] == "DELIVERED"]),
             "suppressed": outcome_metrics([row for row in rows if row["delivery_status"].startswith("SUPPRESSED")]),
+            "volume_candidates": outcome_metrics([
+                row for row in rows if row["delivery_status"] == "CANDIDATE_ONLY"
+            ]),
             "groups": {name: outcome_metrics(items) for name, items in sorted(grouped.items())},
             "top_movers": [
                 {"symbol": row["symbol"], "time": row["alert_time"], "lane": row["lane"],
