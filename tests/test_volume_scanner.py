@@ -197,13 +197,19 @@ class VolumeScannerTests(unittest.TestCase):
         self.assertEqual(SECTOR_BENCHMARKS["FCEL"], "ICLN")
         self.assertTrue({"SPY", "SOXX", "XLE", "XLI", "ICLN"}.issubset(context_symbols()))
 
-    def test_clean_energy_and_power_names_are_in_default_universe(self):
+    def test_selected_clean_energy_and_power_names_are_in_default_universe(self):
         self.assertTrue({
-            "BE", "GEV", "FCEL", "PLUG", "FLNC", "EOSE", "RUN",
+            "BE", "GEV", "FCEL", "ENPH", "FSLR",
         }.issubset(DEFAULT_UNIVERSE))
 
     def test_isrg_and_nrg_are_removed_from_default_universe(self):
         self.assertTrue({"ISRG", "NRG"}.isdisjoint(DEFAULT_UNIVERSE))
+
+    def test_requested_symbols_are_removed_from_default_universe(self):
+        self.assertTrue({
+            "ASML", "CMG", "EOSE", "DIA", "FLNC", "MTUM", "PLUG",
+            "REGN", "RUN", "SOXX", "XLE", "XLF", "XLK",
+        }.isdisjoint(DEFAULT_UNIVERSE))
 
     def test_sector_leadership_boosts_priority_without_filtering(self):
         stamp = datetime(2026, 10, 6, 10, 0, tzinfo=TZ)

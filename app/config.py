@@ -4,18 +4,18 @@ from dataclasses import dataclass, field
 
 DEFAULT_UNIVERSE = {
     "AAPL", "AAOI", "ABNB", "ADBE", "AFRM", "AMAT", "AMD", "AMZN",
-    "ANET", "ARM", "ASML", "AVGO", "BA", "BAC", "BE",
-    "CAT", "CEG", "CMG", "COIN", "COST", "CRM", "CRWD", "CVX", "DDOG",
-    "DE", "DELL", "DIA", "ENPH", "EOSE", "FCEL", "FLNC", "FSLR", "GEV", "GLD",
+    "ANET", "ARM", "AVGO", "BA", "BAC", "BE",
+    "CAT", "CEG", "COIN", "COST", "CRM", "CRWD", "CVX", "DDOG",
+    "DE", "DELL", "ENPH", "FCEL", "FSLR", "GEV", "GLD",
     "GOOG", "GOOGL", "HD", "HOOD",
     "INTC", "IWM", "JPM", "KLAC", "LLY", "LMT", "LOW",
     "LRCX", "LULU", "MA", "MCD", "MDB", "META", "MRNA", "MRVL",
-    "MSFT", "MSTR", "MTUM", "MU", "NBIS", "NET", "NFLX", "NKE", "NOW",
-    "NVDA", "OKLO", "OKTA", "ORCL", "PANW", "PLTR", "PLUG", "PYPL",
-    "QCOM", "QQQ", "RBLX", "REGN", "RUN", "SBUX", "SKHY", "SLV", "SMCI", "SMH",
-    "SNDK", "SNOW", "SOFI", "SOXX", "SPCX", "SPX", "SPY", "TEAM", "TGT", "SHOP", "TSLA",
-    "TSM", "UBER", "UNH", "UPST", "USO", "V", "VRT", "VST", "WMT", "XLE",
-    "XLF", "XLK", "XOM", "ZS",
+    "MSFT", "MSTR", "MU", "NBIS", "NET", "NFLX", "NKE", "NOW",
+    "NVDA", "OKLO", "OKTA", "ORCL", "PANW", "PLTR", "PYPL",
+    "QCOM", "QQQ", "RBLX", "SBUX", "SKHY", "SLV", "SMCI", "SMH",
+    "SNDK", "SNOW", "SOFI", "SPCX", "SPX", "SPY", "TEAM", "TGT", "SHOP", "TSLA",
+    "TSM", "UBER", "UNH", "UPST", "USO", "V", "VRT", "VST", "WMT",
+    "XOM", "ZS",
 }
 
 
