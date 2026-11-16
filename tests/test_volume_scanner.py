@@ -208,7 +208,7 @@ class VolumeScannerTests(unittest.TestCase):
     def test_requested_symbols_are_removed_from_default_universe(self):
         self.assertTrue({
             "ASML", "CMG", "EOSE", "DIA", "FLNC", "MTUM", "PLUG",
-            "REGN", "RUN", "SOXX", "XLE", "XLF", "XLK",
+            "REGN", "RUN", "SMH", "SOXX", "XLE", "XLF", "XLK",
         }.isdisjoint(DEFAULT_UNIVERSE))
 
     def test_sector_leadership_boosts_priority_without_filtering(self):
@@ -526,6 +526,47 @@ class VolumeScannerTests(unittest.TestCase):
         self.assertTrue(decision.actionable)
         self.assertEqual(decision.reason, "exceptional self-relative price expansion")
 
+    def test_meta_style_structured_break_is_not_lost_to_threshold_cliffs(self):
+        stamp = datetime(2026, 11, 16, 10, 8, 25, tzinfo=TZ)
+        alert = VolumeAlert(
+            StockSnapshot("META", 623.81, 8_000_000, stamp, 637, 639.75, 640, 623.70),
+            Severity.HIGH, "BEARISH", "DIRECTIONAL EXPANSION", (),
+            .63, .88, 500_000, 312_000_000, -.70, 3.44, .21, .42, .55,
+            lane="DIRECTIONAL_EXPANSION", score=158, confirmation_ready=True,
+            efficiency=.661, directional_bars=6,
+            sector_context="SECTOR ALIGNED / STOCK LEADING",
+            crossed_levels=(
+                "Previous-Day Low $624.79", "Intraday Low $624.30", "Major Round $625",
+            ),
+            level_tier=1, move_10m_atr=.421, move_15m_atr=.449,
+            efficiency_10m=.661, directional_share=.80,
+            price_change_1m_pct=-.188, impulse_retention=1.0,
+        )
+
+        decision = delivery_decision(alert)
+
+        self.assertTrue(decision.actionable)
+        self.assertEqual(decision.reason, "structured multi-window level break")
+
+    def test_front_loaded_mrna_spike_is_not_alerted_after_the_impulse(self):
+        stamp = datetime(2026, 11, 16, 9, 58, 3, tzinfo=TZ)
+        alert = VolumeAlert(
+            StockSnapshot("MRNA", 218.63, 6_000_000, stamp, 214, 216.35, 218.70, 213.90),
+            Severity.HIGH, "BULLISH", "DIRECTIONAL EXPANSION", (),
+            .68, .48, 350_000, 76_000_000, 2.31, 2.71, .26, .35, .42,
+            lane="DIRECTIONAL_EXPANSION", score=106, confirmation_ready=True,
+            efficiency=.74, directional_bars=5,
+            sector_context="SECTOR ALIGNED / STOCK LEADING",
+            move_10m_atr=.22, move_15m_atr=.20,
+            efficiency_10m=.70, directional_share=.73,
+            price_change_1m_pct=.21, impulse_retention=1.0,
+        )
+
+        decision = delivery_decision(alert)
+
+        self.assertFalse(decision.actionable)
+        self.assertEqual(decision.reason, "front-loaded spike lacks fresh continuation")
+
     def test_rolling_features_measure_impulse_retention(self):
         rolling = RollingStockState()
         profile = replace(self.profile, atr14=10)
@@ -661,13 +702,14 @@ class VolumeScannerTests(unittest.TestCase):
     def test_stale_railway_variables_cannot_remove_names_or_cap_alerts(self):
         with patch.dict("os.environ", {
             "UVS_UNIVERSE": "SHOP",
-            "UVS_IN_PLAY": "XYZ",
+            "UVS_IN_PLAY": "XYZ,SMH",
             "UVS_MAX_ALERTS_PER_SCAN": "3",
         }, clear=True):
             settings = load_settings()
 
         self.assertIn("QCOM", settings.universe)
         self.assertIn("XYZ", settings.universe)
+        self.assertNotIn("SMH", settings.universe)
         self.assertEqual(settings.max_alerts_per_scan, 0)
 
     def test_unauthorized_worker_does_not_replace_newer_tokens(self):
@@ -875,6 +917,32 @@ class VolumeScannerTests(unittest.TestCase):
         directional = [item for item in alerts if item.lane == "DIRECTIONAL_EXPANSION"]
         self.assertEqual(len(directional), 1)
         self.assertTrue(directional[0].confirmation_ready)
+
+    def test_meta_style_opening_percentage_drive_does_not_wait_on_inflated_atr(self):
+        stamp = datetime(2026, 11, 16, 9, 35, 7, tzinfo=TZ)
+        snapshot = StockSnapshot("META", 634.57, 3_000_000, stamp, 639.75, 640, 640, 634.50)
+        profile = replace(
+            self.profile, symbol="META", atr14=40.0,
+            minute_volume=tuple([100_000] * 390),
+            move_5m_pct=tuple([.25] * 390),
+        )
+        features = MovementFeatures(
+            1_000_000, -.81, None, None, .13, None, None,
+            .72, None, 4, .80, 637, True, False, 15, True,
+            change_1m_pct=-.18, impulse_retention=.95,
+        )
+
+        alerts = evaluate_lanes(snapshot, profile, features, Thresholds())
+        directional = [item for item in alerts if item.lane == "DIRECTIONAL_EXPANSION"]
+
+        self.assertEqual(len(directional), 1)
+        self.assertTrue(directional[0].confirmation_ready)
+        self.assertIn("opening percentage expansion", directional[0].reasons)
+        self.assertTrue(delivery_decision(directional[0]).actionable)
+        with tempfile.TemporaryDirectory() as directory:
+            book = CandidateBook(f"{directory}/candidates.json")
+            ready = book.observe(snapshot, directional, features, profile.atr14, Thresholds())
+        self.assertEqual(ready, directional)
 
     def test_opening_directional_bars_use_available_five_minute_path(self):
         profile = replace(self.profile, atr14=6.70)

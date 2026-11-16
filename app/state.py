@@ -5,6 +5,7 @@ from datetime import datetime
 
 from .config import Thresholds
 from .models import MovementFeatures, StockSnapshot, VolumeAlert, VolumeProfile
+from .profiles import minute_index
 
 
 class RollingStockState:
@@ -265,10 +266,22 @@ def accelerated_candidate(alert: VolumeAlert, thresholds: Thresholds) -> bool:
     efficient = (alert.efficiency or 0) >= max(0.72, thresholds.min_directional_efficiency)
     persistent = alert.directional_bars >= max(2, thresholds.min_directional_bars - 1)
     if alert.lane == "DIRECTIONAL_EXPANSION":
+        idx = minute_index(alert.snapshot.timestamp)
+        opening_percent_impulse = bool(
+            idx is not None and idx < 10
+            and alert.confirmation_ready
+            and abs(alert.price_change_5m_pct or 0) >= 0.65
+            and (alert.efficiency or 0) >= 0.60
+            and alert.directional_bars >= thresholds.min_directional_bars
+            and (alert.directional_share or 0) >= 0.70
+        )
         return bool(
-            efficient
-            and persistent
-            and (alert.move_5m_atr or 0) >= max(0.22, thresholds.min_directional_5m_atr * 1.5)
+            opening_percent_impulse
+            or (
+                efficient
+                and persistent
+                and (alert.move_5m_atr or 0) >= max(0.22, thresholds.min_directional_5m_atr * 1.5)
+            )
         )
     return bool(
         alert.lane == "VOLUME_IGNITION"

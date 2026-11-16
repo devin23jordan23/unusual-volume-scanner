@@ -12,10 +12,15 @@ DEFAULT_UNIVERSE = {
     "LRCX", "LULU", "MA", "MCD", "MDB", "META", "MRNA", "MRVL",
     "MSFT", "MSTR", "MU", "NBIS", "NET", "NFLX", "NKE", "NOW",
     "NVDA", "OKLO", "OKTA", "ORCL", "PANW", "PLTR", "PYPL",
-    "QCOM", "QQQ", "RBLX", "SBUX", "SKHY", "SLV", "SMCI", "SMH",
+    "QCOM", "QQQ", "RBLX", "SBUX", "SKHY", "SLV", "SMCI",
     "SNDK", "SNOW", "SOFI", "SPCX", "SPX", "SPY", "TEAM", "TGT", "SHOP", "TSLA",
     "TSM", "UBER", "UNH", "UPST", "USO", "V", "VRT", "VST", "WMT",
     "XOM", "ZS",
+}
+
+EXCLUDED_UNIVERSE = {
+    "ASML", "CMG", "EOSE", "DIA", "FLNC", "ISRG", "MTUM", "NRG",
+    "PLUG", "REGN", "RUN", "SMH", "SOXX", "XLE", "XLF", "XLK",
 }
 
 
@@ -77,7 +82,7 @@ def load_settings() -> Settings:
         profile_sessions=int(os.getenv("UVS_PROFILE_SESSIONS", "30")),
         max_alerts_per_scan=0,
         min_alert_interval_seconds=int(os.getenv("UVS_MIN_ALERT_INTERVAL_SECONDS", "0")),
-        universe=set(DEFAULT_UNIVERSE) | extra,
+        universe=(set(DEFAULT_UNIVERSE) | extra) - EXCLUDED_UNIVERSE,
         thresholds=Thresholds(
             min_price=float(os.getenv("UVS_MIN_PRICE", "5")),
             max_price=float(os.getenv("UVS_MAX_PRICE", "10000")),

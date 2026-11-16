@@ -73,6 +73,41 @@ def delivery_decision(alert: VolumeAlert) -> DeliveryDecision:
         and atr_move >= 0.06
         and recent_move_intact
     )
+    opening_directional_drive = bool(
+        idx is not None and idx < 10
+        and alert.lane == "DIRECTIONAL_EXPANSION"
+        and move >= 0.65
+        and efficiency >= 0.60
+        and alert.directional_bars >= 3
+        and (alert.directional_share or 0) >= 0.70
+        and at_active_edge
+        and impulse_intact
+        and recent_move_intact
+    )
+    structured_level_break = bool(
+        alert.lane == "DIRECTIONAL_EXPANSION"
+        and institutional_level
+        and sector_support
+        and at_active_edge
+        and move >= 0.65
+        and speed >= 2.5
+        and max(alert.move_10m_atr or 0, alert.move_15m_atr or 0) >= 0.38
+        and efficiency >= 0.64
+        and alert.directional_bars >= 6
+        and (alert.directional_share or 0) >= 0.78
+        and impulse_intact
+        and recent_move_intact
+    )
+    directional_recent_move = max(recent_change, 0)
+    front_loaded_spike = bool(
+        alert.lane == "DIRECTIONAL_EXPANSION"
+        and alert.price_change_1m_pct is not None
+        and move >= 1.50
+        and speed >= 2.0
+        and (alert.local_rvol or 0) < 1.0
+        and directional_recent_move < move * 0.15
+        and not sustained_trend
+    )
     exceptional_afternoon_impulse = bool(
         explosive
         or clean_fast_expansion
@@ -84,7 +119,10 @@ def delivery_decision(alert: VolumeAlert) -> DeliveryDecision:
         )
     )
 
-    if move < absolute_floor and not strong_atr_impulse and not sustained_trend:
+    if front_loaded_spike:
+        return DeliveryDecision(False, "front-loaded spike lacks fresh continuation")
+    if (move < absolute_floor and not strong_atr_impulse and not sustained_trend
+            and not opening_directional_drive):
         return DeliveryDecision(False, "insufficient absolute 5m movement")
     if ((alert.local_rvol or 0) >= 5.0 and not explosive
             and not clean_fast_expansion and not sustained_trend):
@@ -95,8 +133,13 @@ def delivery_decision(alert: VolumeAlert) -> DeliveryDecision:
             and not clean_fast_expansion and not sustained_trend):
         return DeliveryDecision(False, "midday move lacks confirmed price expansion")
     if (alert.sector_context and "DIVERGENCE" in alert.sector_context
-            and not institutional_level and not explosive and not sustained_trend):
+            and not institutional_level and not explosive and not strong_atr_impulse
+            and not sustained_trend and not opening_directional_drive):
         return DeliveryDecision(False, "sector divergence without exceptional movement")
+    if opening_directional_drive:
+        return DeliveryDecision(True, "fresh opening percentage expansion")
+    if structured_level_break:
+        return DeliveryDecision(True, "structured multi-window level break")
     if (institutional_level and efficient and atr_move >= 0.18
             and move >= absolute_floor and speed >= 2.0
             and impulse_intact and recent_move_intact):
