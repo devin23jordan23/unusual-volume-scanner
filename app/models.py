@@ -100,6 +100,7 @@ class MovementFeatures:
     efficiency_30m: float | None = None
     change_1m_pct: float | None = None
     impulse_retention: float | None = None
+    fresh_local_break: bool = False
 
 
 class Severity(str, Enum):

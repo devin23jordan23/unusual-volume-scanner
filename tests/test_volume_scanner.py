@@ -486,6 +486,85 @@ class VolumeScannerTests(unittest.TestCase):
             ready = book.observe(snapshot, directional, features, profile.atr14, Thresholds())
         self.assertEqual(ready, directional)
 
+    def test_spcx_midrange_reversal_breaks_local_structure_and_alerts(self):
+        stamp = datetime(2026, 11, 16, 13, 50, tzinfo=TZ)
+        snapshot = StockSnapshot(
+            "SPCX", 136.965, 42_000_000, stamp, 137.815, 139.10, 139.785, 135.8259,
+        )
+        profile = replace(
+            self.profile, symbol="SPCX", sessions=0, atr14=4.11,
+            minute_volume=tuple([120_000] * 390),
+            move_5m_pct=tuple([.35] * 390),
+        )
+        features = MovementFeatures(
+            900_000, .377, .547, .769, .125, .182, .256,
+            .87, .72, 4, .80, 136.20, True, False, 1_800, False,
+            .304, .101, .55, .062, 1.0, True,
+        )
+
+        alerts = evaluate_lanes(snapshot, profile, features, Thresholds())
+        directional = [item for item in alerts if item.lane == "DIRECTIONAL_EXPANSION"]
+
+        self.assertEqual(len(directional), 1)
+        self.assertLess(snapshot.range_position or 0, .40)
+        self.assertEqual(directional[0].direction, "BULLISH")
+        self.assertEqual(directional[0].setup, "LOCAL STRUCTURE TREND")
+        self.assertTrue(directional[0].confirmation_ready)
+        self.assertIn("fresh local structure trend", directional[0].reasons)
+        self.assertEqual(
+            delivery_decision(directional[0]).reason,
+            "fresh local-structure trend inside the daily range",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            book = CandidateBook(f"{directory}/candidates.json")
+            ready = book.observe(snapshot, directional, features, profile.atr14, Thresholds())
+        self.assertEqual(ready, directional)
+
+    def test_rolling_features_detect_a_local_break_below_the_daily_high(self):
+        rolling = RollingStockState()
+        start = datetime(2026, 11, 16, 13, 20, tzinfo=TZ)
+        profile = replace(self.profile, symbol="SPCX", atr14=4.11)
+        rolling.record(StockSnapshot(
+            "SPCX", 139.50, 10_000_000, start - timedelta(minutes=50),
+            137.815, 139.10, 139.785, 135.8259,
+        ))
+        for offset in range(30):
+            price = 136.00 + offset * .025
+            rolling.record(StockSnapshot(
+                "SPCX", price, 20_000_000 + offset * 100_000,
+                start + timedelta(minutes=offset), 137.815, 139.10, 139.785, 135.8259,
+            ))
+        snapshot = StockSnapshot(
+            "SPCX", 136.90, 23_100_000, start + timedelta(minutes=30),
+            137.815, 139.10, 139.785, 135.8259,
+        )
+
+        features = rolling.features(snapshot, profile)
+
+        self.assertTrue(features.fresh_local_break)
+        self.assertFalse(features.fresh_level_break)
+
+    def test_local_structure_exception_requires_an_actual_rolling_break(self):
+        stamp = datetime(2026, 11, 16, 13, 50, tzinfo=TZ)
+        snapshot = StockSnapshot("SHOP", 149, 20_000_000, stamp, 150, 151, 152, 147)
+        profile = replace(
+            self.profile, symbol="SHOP", atr14=6.0,
+            minute_volume=tuple([100_000] * 390),
+        )
+        features = MovementFeatures(
+            900_000, .38, .55, .77, .095, .137, .192,
+            .87, .72, 4, .80, 148.50, True, False, 1_800, False,
+            .31, .078, .55, .06, 1.0, False,
+        )
+
+        alerts = evaluate_lanes(snapshot, profile, features, Thresholds())
+
+        self.assertFalse([
+            item for item in alerts
+            if item.lane == "DIRECTIONAL_EXPANSION"
+            and item.setup == "LOCAL STRUCTURE TREND"
+        ])
+
     def test_stock_drift_without_clean_multi_window_path_stays_suppressed(self):
         stamp = datetime(2026, 11, 16, 14, 40, tzinfo=TZ)
         snapshot = StockSnapshot("SHOP", 149, 12_000_000, stamp, 150, 151, 151, 148.90)

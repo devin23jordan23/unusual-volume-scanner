@@ -80,6 +80,7 @@ class RollingStockState:
             path_efficiency(history, 1800),
             change_1m,
             impulse_retention(history, 300, direction),
+            fresh_local_break(history, snapshot, direction),
         )
 
 
@@ -310,6 +311,14 @@ def accelerated_candidate(alert: VolumeAlert, thresholds: Thresholds) -> bool:
             and alert.directional_bars >= 4
             and (alert.directional_share or 0) >= 0.65
         )
+        local_structure_trend = bool(
+            alert.setup == "LOCAL STRUCTURE TREND"
+            and alert.confirmation_ready
+            and (alert.efficiency or 0) >= 0.80
+            and (alert.efficiency_10m or 0) >= 0.70
+            and alert.directional_bars >= 4
+            and (alert.directional_share or 0) >= 0.75
+        )
         liquid_trend_acceleration = bool(
             alert.setup == "TREND ACCELERATION"
             and alert.confirmation_ready
@@ -323,6 +332,7 @@ def accelerated_candidate(alert: VolumeAlert, thresholds: Thresholds) -> bool:
             or market_index_impulse
             or sustained_index_trend
             or sustained_liquid_stock_trend
+            or local_structure_trend
             or liquid_trend_acceleration
             or (
                 efficient
@@ -447,6 +457,20 @@ def new_extreme_age(history: list[StockSnapshot], snapshot: StockSnapshot, direc
 def fresh_level_break(history: list[StockSnapshot], snapshot: StockSnapshot, direction: int) -> bool:
     cutoff = snapshot.timestamp.timestamp() - 60
     prior = [item.price for item in history[:-1] if item.timestamp.timestamp() <= cutoff]
+    if not prior or direction == 0:
+        return False
+    buffer = max(0.01, snapshot.price * 0.0002)
+    return snapshot.price >= max(prior) + buffer if direction > 0 else snapshot.price <= min(prior) - buffer
+
+
+def fresh_local_break(history: list[StockSnapshot], snapshot: StockSnapshot,
+                      direction: int, seconds: int = 1800) -> bool:
+    cutoff = snapshot.timestamp.timestamp() - seconds
+    comparison_cutoff = snapshot.timestamp.timestamp() - 60
+    prior = [
+        item.price for item in history[:-1]
+        if cutoff <= item.timestamp.timestamp() <= comparison_cutoff
+    ]
     if not prior or direction == 0:
         return False
     buffer = max(0.01, snapshot.price * 0.0002)

@@ -159,6 +159,21 @@ def delivery_decision(alert: VolumeAlert) -> DeliveryDecision:
         and impulse_intact
         and recent_change >= 0.05
     )
+    local_structure_trend = bool(
+        alert.setup == "LOCAL STRUCTURE TREND"
+        and alert.snapshot.symbol not in MARKET_INDEX_SYMBOLS
+        and alert.lane == "DIRECTIONAL_EXPANSION"
+        and direction * (alert.price_change_5m_pct or 0) >= 0.30
+        and direction * (alert.price_change_10m_pct or 0) >= 0.50
+        and direction * (alert.price_change_15m_pct or 0) >= 0.65
+        and direction * (alert.price_change_30m_pct or 0) >= 0.30
+        and efficiency >= 0.80
+        and (alert.efficiency_10m or 0) >= 0.70
+        and alert.directional_bars >= 4
+        and (alert.directional_share or 0) >= 0.75
+        and impulse_intact
+        and recent_change >= 0.05
+    )
     liquid_trend_acceleration = bool(
         alert.setup == "TREND ACCELERATION"
         and alert.lane == "DIRECTIONAL_EXPANSION"
@@ -192,6 +207,8 @@ def delivery_decision(alert: VolumeAlert) -> DeliveryDecision:
         return DeliveryDecision(True, "sustained market-index trend at the active range edge")
     if sustained_liquid_stock_trend:
         return DeliveryDecision(True, "sustained liquid-stock trend at the active range edge")
+    if local_structure_trend:
+        return DeliveryDecision(True, "fresh local-structure trend inside the daily range")
     if liquid_trend_acceleration:
         return DeliveryDecision(True, "liquid trend acceleration at the active range edge")
     if (move < absolute_floor and not strong_atr_impulse and not sustained_trend
