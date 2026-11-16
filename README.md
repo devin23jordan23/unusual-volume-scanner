@@ -12,6 +12,7 @@ The scanner runs two parallel detection lanes:
 - Directional expansion combines 5/10/15/30-minute ATR displacement, consecutive directional bars, path efficiency, observed VWAP, active range-edge position, and new-high/new-low recency. Volume improves this lane's score but is not required.
 - During the first ten minutes, a liquid 0.65% range-edge drive can confirm from percentage expansion even when a temporarily inflated daily ATR would understate the move. Later multi-window level breaks use weighted structure so a tiny miss on one threshold does not veto the setup.
 - A large move concentrated in an already-completed candle is withheld when the current one-minute continuation is weak and local volume is below normal, preventing late alerts after an exhausted spike.
+- SPY, SPX, IWM, and QQQ use a dedicated market-index momentum route based on aligned 5/10/15-minute percentage movement, self-relative speed, directional efficiency, liquidity, and fresh range-edge pressure rather than stock-sized ATR thresholds.
 - Mapped large-cap alerts receive a ranking boost when their industry or sector ETF confirms the direction or leads SPY over the same five-minute window. Sector context never blocks an otherwise valid mover.
 - Confirmed alerts are ranked higher when their move crosses previous-day, premarket, intraday, multiday, or round-number levels. Crossed levels appear in Discord, while the absence of a key-level cross never blocks a valid mover.
 

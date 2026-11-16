@@ -23,6 +23,8 @@ EXCLUDED_UNIVERSE = {
     "PLUG", "REGN", "RUN", "SMH", "SOXX", "XLE", "XLF", "XLK",
 }
 
+MARKET_INDEX_SYMBOLS = {"SPY", "SPX", "IWM", "QQQ"}
+
 
 @dataclass(frozen=True)
 class Thresholds:

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from .config import MARKET_INDEX_SYMBOLS
 from .models import VolumeAlert
 from .profiles import minute_index
 
@@ -108,6 +109,24 @@ def delivery_decision(alert: VolumeAlert) -> DeliveryDecision:
         and directional_recent_move < move * 0.15
         and not sustained_trend
     )
+    market_index_momentum = bool(
+        alert.snapshot.symbol in MARKET_INDEX_SYMBOLS
+        and alert.lane == "DIRECTIONAL_EXPANSION"
+        and move >= 0.15
+        and direction * (alert.price_change_5m_pct or 0) > 0
+        and max(
+            direction * (alert.price_change_10m_pct or 0),
+            direction * (alert.price_change_15m_pct or 0),
+        ) >= 0.20
+        and efficiency >= 0.65
+        and alert.directional_bars >= 4
+        and (alert.directional_share or 0) >= 0.60
+        and speed >= 3.0
+        and (alert.local_rvol or 0) >= 2.5
+        and at_active_edge
+        and impulse_intact
+        and recent_move_intact
+    )
     exceptional_afternoon_impulse = bool(
         explosive
         or clean_fast_expansion
@@ -121,6 +140,8 @@ def delivery_decision(alert: VolumeAlert) -> DeliveryDecision:
 
     if front_loaded_spike:
         return DeliveryDecision(False, "front-loaded spike lacks fresh continuation")
+    if market_index_momentum:
+        return DeliveryDecision(True, "fresh market-index momentum")
     if (move < absolute_floor and not strong_atr_impulse and not sustained_trend
             and not opening_directional_drive):
         return DeliveryDecision(False, "insufficient absolute 5m movement")

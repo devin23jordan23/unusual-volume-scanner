@@ -1,6 +1,6 @@
 from dataclasses import replace
 
-from .config import Thresholds
+from .config import MARKET_INDEX_SYMBOLS, Thresholds
 from .models import MovementFeatures, Severity, StockSnapshot, VolumeAlert, VolumeProfile
 from .profiles import minute_index
 
@@ -171,6 +171,28 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
         features.new_extreme_age_seconds is not None
         and features.new_extreme_age_seconds <= thresholds.max_extreme_age_seconds
     )
+    normal_move = profile.normal_5m_move_pct(idx)
+    speed = (
+        abs(features.change_5m_pct) / normal_move
+        if features.change_5m_pct is not None and normal_move else None
+    )
+    market_index_impulse = bool(
+        snapshot.symbol in MARKET_INDEX_SYMBOLS
+        and not opening
+        and abs(features.change_5m_pct or 0) >= 0.15
+        and direction_sign * (features.change_5m_pct or 0) > 0
+        and max(
+            direction_sign * (features.change_10m_pct or 0),
+            direction_sign * (features.change_15m_pct or 0),
+        ) >= 0.20
+        and (features.efficiency_5m or 0) >= 0.65
+        and features.directional_bars >= 4
+        and (features.directional_share or 0) >= 0.60
+        and (speed or 0) >= 3.0
+        and dollar_volume_5m >= thresholds.min_5m_dollar_volume
+        and opening_edge_ok
+        and opening_fresh_edge
+    )
     opening_move_threshold = max(
         thresholds.min_directional_5m_atr * 1.5,
         thresholds.min_5m_atr_move,
@@ -188,6 +210,7 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
     horizon_ok = (
         (opening and (features.move_5m_atr or 0) >= opening_move_threshold)
         or opening_percent_impulse
+        or market_index_impulse
         or (features.move_10m_atr or 0) >= thresholds.min_directional_10m_atr
         or (features.move_15m_atr or 0) >= thresholds.min_directional_15m_atr
     )
@@ -226,6 +249,7 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
     fresh_impulse = (
         (features.move_5m_atr or 0) >= fresh_impulse_threshold
         or opening_percent_impulse
+        or market_index_impulse
     )
     standalone_fast_impulse = (
         not opening
@@ -238,7 +262,7 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
     )
     signal_efficiency = (
         max(efficiency, features.efficiency_5m or 0, features.efficiency_30m or 0)
-        if standalone_fast_impulse or extended_trend else efficiency
+        if standalone_fast_impulse or extended_trend or market_index_impulse else efficiency
     )
     if not (
         (fresh_impulse or sustained_move or persistent_trend or extended_trend)
@@ -246,7 +270,12 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
         and signal_efficiency >= thresholds.min_directional_efficiency * 0.85
         and features.directional_bars >= arm_bars
         and features.vwap_aligned
-        and ((edge_ok and fresh_edge) or standalone_fast_impulse or opening_percent_impulse)
+        and (
+            (edge_ok and fresh_edge)
+            or standalone_fast_impulse
+            or opening_percent_impulse
+            or market_index_impulse
+        )
     ):
         return None
 
@@ -254,12 +283,8 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
     day_range = None
     if snapshot.high_price is not None and snapshot.low_price is not None and profile.atr14 > 0:
         day_range = (snapshot.high_price - snapshot.low_price) / profile.atr14
-    speed = None
-    normal_move = profile.normal_5m_move_pct(idx)
-    if features.change_5m_pct is not None and normal_move:
-        speed = abs(features.change_5m_pct) / normal_move
     score = directional_score(features, tod_rvol, local_rvol, thresholds)
-    confirmation_ready = (
+    confirmation_ready = market_index_impulse or (
         ((features.move_5m_atr or 0) >= thresholds.min_directional_5m_atr
          or opening_percent_impulse
          or sustained_move or persistent_trend or extended_trend)
@@ -280,6 +305,7 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
         f"{features.move_5m_atr or 0:.2f} ATR in 5m",
         f"{sustained_atr:.2f} ATR sustained",
         f"{signal_efficiency:.2f} directional efficiency",
+        "market-index momentum" if market_index_impulse else
         "opening percentage expansion" if opening_percent_impulse else
         "30m persistent trend" if extended_trend else
         "fresh range break" if features.fresh_level_break else

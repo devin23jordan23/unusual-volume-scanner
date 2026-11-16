@@ -3,7 +3,7 @@ import os
 from collections import defaultdict, deque
 from datetime import datetime
 
-from .config import Thresholds
+from .config import MARKET_INDEX_SYMBOLS, Thresholds
 from .models import MovementFeatures, StockSnapshot, VolumeAlert, VolumeProfile
 from .profiles import minute_index
 
@@ -275,8 +275,26 @@ def accelerated_candidate(alert: VolumeAlert, thresholds: Thresholds) -> bool:
             and alert.directional_bars >= thresholds.min_directional_bars
             and (alert.directional_share or 0) >= 0.70
         )
+        market_index_impulse = bool(
+            alert.snapshot.symbol in MARKET_INDEX_SYMBOLS
+            and alert.confirmation_ready
+            and abs(alert.price_change_5m_pct or 0) >= 0.15
+            and (1 if alert.direction == "BULLISH" else -1)
+            * (alert.price_change_5m_pct or 0) > 0
+            and max(
+                (1 if alert.direction == "BULLISH" else -1)
+                * (alert.price_change_10m_pct or 0),
+                (1 if alert.direction == "BULLISH" else -1)
+                * (alert.price_change_15m_pct or 0),
+            ) >= 0.20
+            and (alert.efficiency or 0) >= 0.65
+            and alert.directional_bars >= 4
+            and (alert.directional_share or 0) >= 0.60
+            and (alert.speed_ratio or 0) >= 3.0
+        )
         return bool(
             opening_percent_impulse
+            or market_index_impulse
             or (
                 efficient
                 and persistent

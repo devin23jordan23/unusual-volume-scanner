@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta
 from unittest.mock import Mock, patch
 from zoneinfo import ZoneInfo
 
-from app.config import DEFAULT_UNIVERSE, Settings, Thresholds, load_settings
+from app.config import DEFAULT_UNIVERSE, MARKET_INDEX_SYMBOLS, Settings, Thresholds, load_settings
 from app.discord import DiscordNotifier
 from app.levels import add_level_context, crossed_round_number, premarket_range
 from app.models import Candle, MovementFeatures, Severity, StockSnapshot, VolumeAlert
@@ -116,6 +116,9 @@ class VolumeScannerTests(unittest.TestCase):
 
     def test_spx_is_in_default_universe(self):
         self.assertIn("SPX", DEFAULT_UNIVERSE)
+
+    def test_market_index_route_covers_only_primary_trading_products(self):
+        self.assertEqual(MARKET_INDEX_SYMBOLS, {"SPY", "SPX", "IWM", "QQQ"})
 
     def test_spx_quote_uses_index_price_and_spy_share_volume(self):
         now = datetime(2026, 10, 8, 10, 0, tzinfo=TZ)
@@ -371,6 +374,55 @@ class VolumeScannerTests(unittest.TestCase):
         )
 
         self.assertFalse(delivery_decision(alert).actionable)
+
+    def test_spy_midday_momentum_uses_index_relative_thresholds(self):
+        stamp = datetime(2026, 11, 16, 13, 28, 50, tzinfo=TZ)
+        snapshot = StockSnapshot("SPY", 750, 36_000_000, stamp, 755, 754, 756, 749.90)
+        profile = replace(
+            self.profile, symbol="SPY", atr14=13.0,
+            minute_volume=tuple([100_000] * 390),
+            move_5m_pct=tuple([.05] * 390),
+        )
+        features = MovementFeatures(
+            1_620_000, -.177, -.204, -.248, .102, .117, .142,
+            .84, .659, 4, .60, 752, True, False, 30, True,
+            -.30, .17, .50, -.047, 1.0,
+        )
+
+        alerts = evaluate_lanes(snapshot, profile, features, Thresholds())
+        directional = [item for item in alerts if item.lane == "DIRECTIONAL_EXPANSION"]
+
+        self.assertEqual(len(directional), 1)
+        self.assertTrue(directional[0].confirmation_ready)
+        self.assertIn("market-index momentum", directional[0].reasons)
+        self.assertEqual(
+            delivery_decision(directional[0]).reason,
+            "fresh market-index momentum",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            book = CandidateBook(f"{directory}/candidates.json")
+            ready = book.observe(snapshot, directional, features, profile.atr14, Thresholds())
+        self.assertEqual(ready, directional)
+
+    def test_iwm_midday_momentum_promotes_before_stock_atr_thresholds(self):
+        stamp = datetime(2026, 11, 16, 13, 30, 54, tzinfo=TZ)
+        snapshot = StockSnapshot("IWM", 276, 24_000_000, stamp, 278, 277.5, 279, 275.90)
+        profile = replace(
+            self.profile, symbol="IWM", atr14=5.5,
+            minute_volume=tuple([100_000] * 390),
+            move_5m_pct=tuple([.04] * 390),
+        )
+        features = MovementFeatures(
+            1_385_000, -.174, -.187, -.249, .087, .093, .125,
+            .922, .567, 5, .60, 277, True, False, 30, True,
+            -.32, .16, .50, -.06, 1.0,
+        )
+
+        alerts = evaluate_lanes(snapshot, profile, features, Thresholds())
+        directional = [item for item in alerts if item.lane == "DIRECTIONAL_EXPANSION"]
+
+        self.assertEqual(len(directional), 1)
+        self.assertTrue(delivery_decision(directional[0]).actionable)
 
     def test_sector_confirmed_real_move_remains_actionable(self):
         stamp = datetime(2026, 10, 15, 10, 3, tzinfo=TZ)
