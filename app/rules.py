@@ -231,7 +231,23 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
         and features.directional_bars >= max(2, thresholds.min_directional_bars - 1)
         and (features.directional_share or 0) >= 0.65
     )
-    horizon_ok = horizon_ok or persistent_trend or extended_trend
+    liquid_trend_acceleration = bool(
+        not opening
+        and snapshot.symbol not in MARKET_INDEX_SYMBOLS
+        and direction_sign * (features.change_5m_pct or 0) >= 0.35
+        and direction_sign * (features.change_15m_pct or 0) >= 0.35
+        and direction_sign * (features.change_30m_pct or 0) >= 0.65
+        and (features.efficiency_5m or 0) >= 0.70
+        and features.directional_bars >= 3
+        and direction_sign * (features.change_1m_pct or 0) >= 0.08
+        and tod_rvol >= 1.50
+        and (local_rvol or 0) >= 2.50
+        and dollar_volume_5m >= thresholds.min_5m_dollar_volume
+        and features.vwap_aligned
+        and opening_edge_ok
+        and opening_fresh_edge
+    )
+    horizon_ok = horizon_ok or persistent_trend or extended_trend or liquid_trend_acceleration
     edge_ok = position is not None and (
         position >= thresholds.directional_edge_position if direction_sign > 0
         else position <= 1 - thresholds.directional_edge_position
@@ -262,10 +278,12 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
     )
     signal_efficiency = (
         max(efficiency, features.efficiency_5m or 0, features.efficiency_30m or 0)
-        if standalone_fast_impulse or extended_trend or market_index_impulse else efficiency
+        if (standalone_fast_impulse or extended_trend or market_index_impulse
+            or liquid_trend_acceleration) else efficiency
     )
     if not (
-        (fresh_impulse or sustained_move or persistent_trend or extended_trend)
+        (fresh_impulse or sustained_move or persistent_trend or extended_trend
+         or liquid_trend_acceleration)
         and (horizon_ok or standalone_fast_impulse)
         and signal_efficiency >= thresholds.min_directional_efficiency * 0.85
         and features.directional_bars >= arm_bars
@@ -275,6 +293,7 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
             or standalone_fast_impulse
             or opening_percent_impulse
             or market_index_impulse
+            or liquid_trend_acceleration
         )
     ):
         return None
@@ -284,7 +303,7 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
     if snapshot.high_price is not None and snapshot.low_price is not None and profile.atr14 > 0:
         day_range = (snapshot.high_price - snapshot.low_price) / profile.atr14
     score = directional_score(features, tod_rvol, local_rvol, thresholds)
-    confirmation_ready = market_index_impulse or (
+    confirmation_ready = market_index_impulse or liquid_trend_acceleration or (
         ((features.move_5m_atr or 0) >= thresholds.min_directional_5m_atr
          or opening_percent_impulse
          or sustained_move or persistent_trend or extended_trend)
@@ -307,11 +326,16 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
         f"{signal_efficiency:.2f} directional efficiency",
         "market-index momentum" if market_index_impulse else
         "opening percentage expansion" if opening_percent_impulse else
+        "liquid trend acceleration" if liquid_trend_acceleration else
         "30m persistent trend" if extended_trend else
         "fresh range break" if features.fresh_level_break else
         "fast liquid impulse" if standalone_fast_impulse else "pressing fresh daily extreme",
     )
-    setup = "SUSTAINED TREND" if persistent_trend or extended_trend else "DIRECTIONAL EXPANSION"
+    setup = (
+        "TREND ACCELERATION" if liquid_trend_acceleration else
+        "SUSTAINED TREND" if persistent_trend or extended_trend else
+        "DIRECTIONAL EXPANSION"
+    )
     return VolumeAlert(
         snapshot, severity, direction_value, setup, reasons,
         tod_rvol, local_rvol, features.volume_5m,

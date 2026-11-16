@@ -292,9 +292,18 @@ def accelerated_candidate(alert: VolumeAlert, thresholds: Thresholds) -> bool:
             and (alert.directional_share or 0) >= 0.60
             and (alert.speed_ratio or 0) >= 3.0
         )
+        liquid_trend_acceleration = bool(
+            alert.setup == "TREND ACCELERATION"
+            and alert.confirmation_ready
+            and abs(alert.price_change_5m_pct or 0) >= 0.35
+            and (alert.efficiency or 0) >= 0.70
+            and alert.directional_bars >= 3
+            and (alert.local_rvol or 0) >= 2.50
+        )
         return bool(
             opening_percent_impulse
             or market_index_impulse
+            or liquid_trend_acceleration
             or (
                 efficient
                 and persistent

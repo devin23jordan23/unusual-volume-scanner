@@ -127,6 +127,20 @@ def delivery_decision(alert: VolumeAlert) -> DeliveryDecision:
         and impulse_intact
         and recent_move_intact
     )
+    liquid_trend_acceleration = bool(
+        alert.setup == "TREND ACCELERATION"
+        and alert.lane == "DIRECTIONAL_EXPANSION"
+        and move >= 0.35
+        and direction * (alert.price_change_15m_pct or 0) >= 0.35
+        and direction * (alert.price_change_30m_pct or 0) >= 0.65
+        and efficiency >= 0.70
+        and alert.directional_bars >= 3
+        and alert.tod_rvol >= 1.50
+        and (alert.local_rvol or 0) >= 2.50
+        and at_active_edge
+        and impulse_intact
+        and recent_change >= 0.08
+    )
     exceptional_afternoon_impulse = bool(
         explosive
         or clean_fast_expansion
@@ -142,6 +156,8 @@ def delivery_decision(alert: VolumeAlert) -> DeliveryDecision:
         return DeliveryDecision(False, "front-loaded spike lacks fresh continuation")
     if market_index_momentum:
         return DeliveryDecision(True, "fresh market-index momentum")
+    if liquid_trend_acceleration:
+        return DeliveryDecision(True, "liquid trend acceleration at the active range edge")
     if (move < absolute_floor and not strong_atr_impulse and not sustained_trend
             and not opening_directional_drive):
         return DeliveryDecision(False, "insufficient absolute 5m movement")

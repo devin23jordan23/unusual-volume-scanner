@@ -1041,6 +1041,66 @@ class VolumeScannerTests(unittest.TestCase):
         self.assertEqual(len(directional), 1)
         self.assertTrue(directional[0].confirmation_ready)
 
+    def test_nvda_noon_trend_acceleration_is_immediately_actionable(self):
+        stamp = datetime(2026, 11, 16, 12, 4, 31, tzinfo=TZ)
+        snapshot = StockSnapshot(
+            "NVDA", 158.54, 39_215_000, stamp, 160.20, 160.80, 160.85, 158.50,
+        )
+        profile = replace(
+            self.profile,
+            symbol="NVDA",
+            atr14=11.0,
+            minute_volume=tuple([100_000] * 390),
+            move_5m_pct=tuple([.10] * 390),
+        )
+        features = MovementFeatures(
+            1_275_000, -.431, -.249, -.430, .062, .036, .062,
+            .741, .234, 3, .50, 159.10, True, False, 30, True,
+            -.773, .112, .247, -.116, 1.0,
+        )
+
+        alerts = evaluate_lanes(snapshot, profile, features, Thresholds())
+        directional = [item for item in alerts if item.lane == "DIRECTIONAL_EXPANSION"]
+
+        self.assertEqual(len(directional), 1)
+        self.assertEqual(directional[0].direction, "BEARISH")
+        self.assertEqual(directional[0].setup, "TREND ACCELERATION")
+        self.assertTrue(directional[0].confirmation_ready)
+        self.assertIn("liquid trend acceleration", directional[0].reasons)
+        self.assertEqual(
+            delivery_decision(directional[0]).reason,
+            "liquid trend acceleration at the active range edge",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            book = CandidateBook(f"{directory}/candidates.json")
+            ready = book.observe(snapshot, directional, features, profile.atr14, Thresholds())
+        self.assertEqual(ready, directional)
+
+    def test_high_volume_without_established_trend_does_not_use_acceleration_route(self):
+        stamp = datetime(2026, 11, 16, 12, 4, 31, tzinfo=TZ)
+        snapshot = StockSnapshot(
+            "SHOP", 149.04, 39_215_000, stamp, 148.90, 148.80, 149.10, 148.70,
+        )
+        profile = replace(
+            self.profile,
+            symbol="SHOP",
+            atr14=6.3,
+            minute_volume=tuple([100_000] * 390),
+            move_5m_pct=tuple([.10] * 390),
+        )
+        features = MovementFeatures(
+            1_500_000, .43, .25, .20, .10, .06, .05,
+            .75, .30, 3, .50, 148.95, True, False, 30, True,
+            .18, .04, .25, .12, 1.0,
+        )
+
+        alerts = evaluate_lanes(snapshot, profile, features, Thresholds())
+
+        self.assertFalse([
+            item for item in alerts
+            if item.lane == "DIRECTIONAL_EXPANSION" and item.setup == "TREND ACCELERATION"
+        ])
+
     def test_established_selloff_keeps_bearish_direction_through_a_small_pullback(self):
         stamp = datetime(2026, 11, 13, 10, 30, tzinfo=TZ)
         snapshot = StockSnapshot("MSFT", 496, 9_000_000, stamp, 504, 505, 505, 495.80)
