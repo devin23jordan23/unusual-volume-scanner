@@ -424,6 +424,59 @@ class VolumeScannerTests(unittest.TestCase):
         self.assertEqual(len(directional), 1)
         self.assertTrue(delivery_decision(directional[0]).actionable)
 
+    def test_spy_afternoon_stair_step_breakdown_is_a_sustained_index_trend(self):
+        stamp = datetime(2026, 11, 16, 14, 40, tzinfo=TZ)
+        snapshot = StockSnapshot("SPY", 738.94, 30_000_000, stamp, 751, 754.37, 752, 738.90)
+        profile = replace(
+            self.profile, symbol="SPY", atr14=13.0,
+            minute_volume=tuple([100_000] * 390),
+            move_5m_pct=tuple([.05] * 390),
+        )
+        features = MovementFeatures(
+            850_000, -.076, -.166, -.187, .043, .094, .106,
+            .65, .66, 4, .70, 744, True, False, 30, True,
+            -.230, .131, .58, -.035, 1.0,
+        )
+
+        alerts = evaluate_lanes(snapshot, profile, features, Thresholds())
+        directional = [item for item in alerts if item.lane == "DIRECTIONAL_EXPANSION"]
+
+        self.assertEqual(len(directional), 1)
+        self.assertEqual(directional[0].direction, "BEARISH")
+        self.assertEqual(directional[0].setup, "SUSTAINED INDEX TREND")
+        self.assertTrue(directional[0].confirmation_ready)
+        self.assertIn("sustained index trend", directional[0].reasons)
+        self.assertEqual(
+            delivery_decision(directional[0]).reason,
+            "sustained market-index trend at the active range edge",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            book = CandidateBook(f"{directory}/candidates.json")
+            ready = book.observe(snapshot, directional, features, profile.atr14, Thresholds())
+        self.assertEqual(ready, directional)
+
+    def test_index_drift_without_multi_window_alignment_stays_suppressed(self):
+        stamp = datetime(2026, 11, 16, 14, 40, tzinfo=TZ)
+        snapshot = StockSnapshot("SPY", 740, 30_000_000, stamp, 741, 754.37, 742, 739.90)
+        profile = replace(
+            self.profile, symbol="SPY", atr14=13.0,
+            minute_volume=tuple([100_000] * 390),
+            move_5m_pct=tuple([.05] * 390),
+        )
+        features = MovementFeatures(
+            850_000, -.08, -.10, -.12, .046, .057, .068,
+            .70, .65, 4, .70, 744, True, False, 30, True,
+            -.14, .080, .60, -.03, 1.0,
+        )
+
+        alerts = evaluate_lanes(snapshot, profile, features, Thresholds())
+
+        self.assertFalse([
+            item for item in alerts
+            if item.lane == "DIRECTIONAL_EXPANSION"
+            and item.setup == "SUSTAINED INDEX TREND"
+        ])
+
     def test_sector_confirmed_real_move_remains_actionable(self):
         stamp = datetime(2026, 10, 15, 10, 3, tzinfo=TZ)
         alert = VolumeAlert(

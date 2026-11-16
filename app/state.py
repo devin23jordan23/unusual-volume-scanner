@@ -292,6 +292,15 @@ def accelerated_candidate(alert: VolumeAlert, thresholds: Thresholds) -> bool:
             and (alert.directional_share or 0) >= 0.60
             and (alert.speed_ratio or 0) >= 3.0
         )
+        sustained_index_trend = bool(
+            alert.setup == "SUSTAINED INDEX TREND"
+            and alert.snapshot.symbol in MARKET_INDEX_SYMBOLS
+            and alert.confirmation_ready
+            and (alert.efficiency or 0) >= 0.60
+            and (alert.efficiency_10m or 0) >= 0.60
+            and alert.directional_bars >= 4
+            and (alert.directional_share or 0) >= 0.65
+        )
         liquid_trend_acceleration = bool(
             alert.setup == "TREND ACCELERATION"
             and alert.confirmation_ready
@@ -303,6 +312,7 @@ def accelerated_candidate(alert: VolumeAlert, thresholds: Thresholds) -> bool:
         return bool(
             opening_percent_impulse
             or market_index_impulse
+            or sustained_index_trend
             or liquid_trend_acceleration
             or (
                 efficient

@@ -127,6 +127,22 @@ def delivery_decision(alert: VolumeAlert) -> DeliveryDecision:
         and impulse_intact
         and recent_move_intact
     )
+    sustained_index_trend = bool(
+        alert.setup == "SUSTAINED INDEX TREND"
+        and alert.snapshot.symbol in MARKET_INDEX_SYMBOLS
+        and alert.lane == "DIRECTIONAL_EXPANSION"
+        and direction * (alert.price_change_5m_pct or 0) >= 0.06
+        and direction * (alert.price_change_10m_pct or 0) >= 0.15
+        and direction * (alert.price_change_15m_pct or 0) >= 0.16
+        and direction * (alert.price_change_30m_pct or 0) >= 0.20
+        and efficiency >= 0.60
+        and (alert.efficiency_10m or 0) >= 0.60
+        and alert.directional_bars >= 4
+        and (alert.directional_share or 0) >= 0.65
+        and at_active_edge
+        and impulse_intact
+        and recent_change >= 0.02
+    )
     liquid_trend_acceleration = bool(
         alert.setup == "TREND ACCELERATION"
         and alert.lane == "DIRECTIONAL_EXPANSION"
@@ -156,6 +172,8 @@ def delivery_decision(alert: VolumeAlert) -> DeliveryDecision:
         return DeliveryDecision(False, "front-loaded spike lacks fresh continuation")
     if market_index_momentum:
         return DeliveryDecision(True, "fresh market-index momentum")
+    if sustained_index_trend:
+        return DeliveryDecision(True, "sustained market-index trend at the active range edge")
     if liquid_trend_acceleration:
         return DeliveryDecision(True, "liquid trend acceleration at the active range edge")
     if (move < absolute_floor and not strong_atr_impulse and not sustained_trend
