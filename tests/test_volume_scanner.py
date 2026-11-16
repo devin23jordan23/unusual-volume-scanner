@@ -455,6 +455,59 @@ class VolumeScannerTests(unittest.TestCase):
             ready = book.observe(snapshot, directional, features, profile.atr14, Thresholds())
         self.assertEqual(ready, directional)
 
+    def test_googl_afternoon_stair_step_breakdown_is_a_sustained_liquid_trend(self):
+        stamp = datetime(2026, 11, 16, 14, 40, tzinfo=TZ)
+        snapshot = StockSnapshot("GOOGL", 284.44, 18_000_000, stamp, 287, 287.50, 287.20, 284.40)
+        profile = replace(
+            self.profile, symbol="GOOGL", atr14=9.0,
+            minute_volume=tuple([75_000] * 390),
+            move_5m_pct=tuple([.10] * 390),
+        )
+        features = MovementFeatures(
+            500_000, -.207, -.254, -.282, .065, .080, .089,
+            .91, .72, 4, .67, 286, True, False, 30, True,
+            -.342, .108, .58, -.072, 1.0,
+        )
+
+        alerts = evaluate_lanes(snapshot, profile, features, Thresholds())
+        directional = [item for item in alerts if item.lane == "DIRECTIONAL_EXPANSION"]
+
+        self.assertEqual(len(directional), 1)
+        self.assertEqual(directional[0].direction, "BEARISH")
+        self.assertEqual(directional[0].setup, "SUSTAINED LIQUID TREND")
+        self.assertTrue(directional[0].confirmation_ready)
+        self.assertIn("sustained liquid stock trend", directional[0].reasons)
+        self.assertEqual(
+            delivery_decision(directional[0]).reason,
+            "sustained liquid-stock trend at the active range edge",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            book = CandidateBook(f"{directory}/candidates.json")
+            ready = book.observe(snapshot, directional, features, profile.atr14, Thresholds())
+        self.assertEqual(ready, directional)
+
+    def test_stock_drift_without_clean_multi_window_path_stays_suppressed(self):
+        stamp = datetime(2026, 11, 16, 14, 40, tzinfo=TZ)
+        snapshot = StockSnapshot("SHOP", 149, 12_000_000, stamp, 150, 151, 151, 148.90)
+        profile = replace(
+            self.profile, symbol="SHOP", atr14=6.0,
+            minute_volume=tuple([75_000] * 390),
+            move_5m_pct=tuple([.10] * 390),
+        )
+        features = MovementFeatures(
+            600_000, -.21, -.25, -.28, .052, .062, .070,
+            .55, .48, 3, .55, 150, True, False, 30, True,
+            -.34, .085, .45, -.07, 1.0,
+        )
+
+        alerts = evaluate_lanes(snapshot, profile, features, Thresholds())
+
+        self.assertFalse([
+            item for item in alerts
+            if item.lane == "DIRECTIONAL_EXPANSION"
+            and item.setup == "SUSTAINED LIQUID TREND"
+        ])
+
     def test_index_drift_without_multi_window_alignment_stays_suppressed(self):
         stamp = datetime(2026, 11, 16, 14, 40, tzinfo=TZ)
         snapshot = StockSnapshot("SPY", 740, 30_000_000, stamp, 741, 754.37, 742, 739.90)

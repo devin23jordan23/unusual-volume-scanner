@@ -210,6 +210,23 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
         and opening_edge_ok
         and opening_fresh_edge
     )
+    sustained_liquid_stock_trend = bool(
+        snapshot.symbol not in MARKET_INDEX_SYMBOLS
+        and not opening
+        and direction_sign * (features.change_5m_pct or 0) >= 0.18
+        and direction_sign * (features.change_10m_pct or 0) >= 0.24
+        and direction_sign * (features.change_15m_pct or 0) >= 0.25
+        and direction_sign * (features.change_30m_pct or 0) >= 0.30
+        and (features.efficiency_5m or 0) >= 0.75
+        and (features.efficiency_10m or 0) >= 0.65
+        and features.directional_bars >= 4
+        and (features.directional_share or 0) >= 0.65
+        and direction_sign * (features.change_1m_pct or 0) >= 0.05
+        and dollar_volume_5m >= thresholds.min_5m_dollar_volume
+        and features.vwap_aligned
+        and opening_edge_ok
+        and opening_fresh_edge
+    )
     opening_move_threshold = max(
         thresholds.min_directional_5m_atr * 1.5,
         thresholds.min_5m_atr_move,
@@ -229,6 +246,7 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
         or opening_percent_impulse
         or market_index_impulse
         or sustained_index_trend
+        or sustained_liquid_stock_trend
         or (features.move_10m_atr or 0) >= thresholds.min_directional_10m_atr
         or (features.move_15m_atr or 0) >= thresholds.min_directional_15m_atr
     )
@@ -268,6 +286,7 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
     horizon_ok = (
         horizon_ok or persistent_trend or extended_trend
         or liquid_trend_acceleration or sustained_index_trend
+        or sustained_liquid_stock_trend
     )
     edge_ok = position is not None and (
         position >= thresholds.directional_edge_position if direction_sign > 0
@@ -301,11 +320,13 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
         max(efficiency, features.efficiency_5m or 0, features.efficiency_30m or 0)
         if (standalone_fast_impulse or extended_trend or market_index_impulse
             or sustained_index_trend
+            or sustained_liquid_stock_trend
             or liquid_trend_acceleration) else efficiency
     )
     if not (
         (fresh_impulse or sustained_move or persistent_trend or extended_trend
-         or liquid_trend_acceleration or sustained_index_trend)
+         or liquid_trend_acceleration or sustained_index_trend
+         or sustained_liquid_stock_trend)
         and (horizon_ok or standalone_fast_impulse)
         and signal_efficiency >= thresholds.min_directional_efficiency * 0.85
         and features.directional_bars >= arm_bars
@@ -316,6 +337,7 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
             or opening_percent_impulse
             or market_index_impulse
             or sustained_index_trend
+            or sustained_liquid_stock_trend
             or liquid_trend_acceleration
         )
     ):
@@ -328,6 +350,7 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
     score = directional_score(features, tod_rvol, local_rvol, thresholds)
     confirmation_ready = (
         market_index_impulse or sustained_index_trend or liquid_trend_acceleration
+        or sustained_liquid_stock_trend
     ) or (
         ((features.move_5m_atr or 0) >= thresholds.min_directional_5m_atr
          or opening_percent_impulse
@@ -351,6 +374,7 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
         f"{signal_efficiency:.2f} directional efficiency",
         "market-index momentum" if market_index_impulse else
         "sustained index trend" if sustained_index_trend else
+        "sustained liquid stock trend" if sustained_liquid_stock_trend else
         "opening percentage expansion" if opening_percent_impulse else
         "liquid trend acceleration" if liquid_trend_acceleration else
         "30m persistent trend" if extended_trend else
@@ -359,6 +383,7 @@ def evaluate_directional(snapshot: StockSnapshot, profile: VolumeProfile, featur
     )
     setup = (
         "SUSTAINED INDEX TREND" if sustained_index_trend else
+        "SUSTAINED LIQUID TREND" if sustained_liquid_stock_trend else
         "TREND ACCELERATION" if liquid_trend_acceleration else
         "SUSTAINED TREND" if persistent_trend or extended_trend else
         "DIRECTIONAL EXPANSION"
