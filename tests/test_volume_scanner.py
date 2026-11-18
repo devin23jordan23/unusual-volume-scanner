@@ -215,7 +215,7 @@ class VolumeScannerTests(unittest.TestCase):
     def test_requested_symbols_are_removed_from_default_universe(self):
         self.assertTrue({
             "ASML", "CMG", "EOSE", "DIA", "FLNC", "MTUM", "PLUG",
-            "REGN", "RUN", "SMH", "SOXX", "XLE", "XLF", "XLK",
+            "REGN", "RUN", "SMH", "SOXX", "TGT", "UNH", "XLE", "XLF", "XLK",
         }.isdisjoint(DEFAULT_UNIVERSE))
 
     def test_sector_leadership_boosts_priority_without_filtering(self):

@@ -13,14 +13,14 @@ DEFAULT_UNIVERSE = {
     "MSFT", "MSTR", "MU", "NBIS", "NET", "NFLX", "NKE", "NOW",
     "NVDA", "OKLO", "OKTA", "ORCL", "PANW", "PLTR", "PYPL",
     "QCOM", "QQQ", "RBLX", "SBUX", "SKHY", "SLV", "SMCI",
-    "SNDK", "SNOW", "SOFI", "SPCX", "SPX", "SPY", "TEAM", "TGT", "SHOP", "TSLA",
-    "TSM", "UBER", "UNH", "UPST", "USO", "V", "VRT", "VST", "WMT",
+    "SNDK", "SNOW", "SOFI", "SPCX", "SPX", "SPY", "TEAM", "SHOP", "TSLA",
+    "TSM", "UBER", "UPST", "USO", "V", "VRT", "VST", "WMT",
     "XOM", "ZS",
 }
 
 EXCLUDED_UNIVERSE = {
     "ASML", "CMG", "EOSE", "DIA", "FLNC", "ISRG", "MTUM", "NRG",
-    "PLUG", "REGN", "RUN", "SMH", "SOXX", "XLE", "XLF", "XLK",
+    "PLUG", "REGN", "RUN", "SMH", "SOXX", "TGT", "UNH", "XLE", "XLF", "XLK",
 }
 
 MARKET_INDEX_SYMBOLS = {"SPY", "SPX", "IWM", "QQQ"}
