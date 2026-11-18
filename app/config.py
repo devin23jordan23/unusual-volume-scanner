@@ -6,7 +6,7 @@ DEFAULT_UNIVERSE = {
     "AAPL", "AAOI", "ABNB", "ADBE", "AFRM", "AMAT", "AMD", "AMZN",
     "ANET", "ARM", "AVGO", "BA", "BAC", "BE",
     "CAT", "CEG", "COIN", "COST", "CRM", "CRWD", "CVX", "DDOG",
-    "DE", "DELL", "ENPH", "FCEL", "FSLR", "GEV", "GLD",
+    "DE", "DELL", "DIS", "ENPH", "FCEL", "FSLR", "GEV", "GLD",
     "GOOG", "GOOGL", "HD", "HOOD",
     "INTC", "IWM", "JPM", "KLAC", "LLY", "LMT", "LOW",
     "LRCX", "LULU", "MA", "MCD", "MDB", "META", "MRNA", "MRVL",

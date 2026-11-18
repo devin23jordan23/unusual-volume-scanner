@@ -117,6 +117,10 @@ class VolumeScannerTests(unittest.TestCase):
     def test_spx_is_in_default_universe(self):
         self.assertIn("SPX", DEFAULT_UNIVERSE)
 
+    def test_dis_is_in_default_universe_with_communication_sector_context(self):
+        self.assertIn("DIS", DEFAULT_UNIVERSE)
+        self.assertEqual(SECTOR_BENCHMARKS["DIS"], "XLC")
+
     def test_market_index_route_covers_only_primary_trading_products(self):
         self.assertEqual(MARKET_INDEX_SYMBOLS, {"SPY", "SPX", "IWM", "QQQ"})
 

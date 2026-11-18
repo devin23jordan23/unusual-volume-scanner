@@ -12,7 +12,7 @@ SECTOR_BENCHMARKS = {
     "AVGO": "SOXX", "INTC": "SOXX", "KLAC": "SOXX", "LRCX": "SOXX",
     "MRVL": "SOXX", "MU": "SOXX", "NVDA": "SOXX", "QCOM": "SOXX",
     "SMCI": "SOXX", "SNDK": "SOXX", "TSM": "SOXX", "WDC": "SOXX",
-    "GOOG": "XLC", "GOOGL": "XLC", "META": "XLC", "NFLX": "XLC",
+    "DIS": "XLC", "GOOG": "XLC", "GOOGL": "XLC", "META": "XLC", "NFLX": "XLC",
     "RBLX": "XLC",
     "ABNB": "XLY", "AMZN": "XLY", "HD": "XLY", "LOW": "XLY",
     "LULU": "XLY", "MCD": "XLY", "NKE": "XLY", "SBUX": "XLY",
