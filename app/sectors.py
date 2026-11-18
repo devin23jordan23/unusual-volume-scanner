@@ -4,7 +4,7 @@ from .models import VolumeAlert
 
 
 SECTOR_BENCHMARKS = {
-    "AAPL": "XLK", "ADBE": "XLK", "ANET": "XLK", "CRM": "XLK",
+    "AAPL": "XLK", "ADBE": "XLK", "ANET": "XLK", "ANT": "XLK", "CRM": "XLK",
     "CRWD": "XLK", "DDOG": "XLK", "DELL": "XLK", "MSFT": "XLK",
     "NET": "XLK", "NOW": "XLK", "ORCL": "XLK", "PANW": "XLK",
     "PLTR": "XLK", "SNOW": "XLK", "TEAM": "XLK",

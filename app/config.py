@@ -4,23 +4,23 @@ from dataclasses import dataclass, field
 
 DEFAULT_UNIVERSE = {
     "AAPL", "AAOI", "ABNB", "ADBE", "AFRM", "AMAT", "AMD", "AMZN",
-    "ANET", "ARM", "AVGO", "BA", "BAC", "BE",
-    "CAT", "CEG", "COIN", "COST", "CRM", "CRWD", "CVX", "DDOG",
-    "DE", "DELL", "DIS", "ENPH", "FCEL", "FSLR", "GEV", "GLD",
-    "GOOG", "GOOGL", "HD", "HOOD",
-    "INTC", "IWM", "JPM", "KLAC", "LLY", "LMT", "LOW",
-    "LRCX", "LULU", "MA", "MCD", "MDB", "META", "MRNA", "MRVL",
-    "MSFT", "MSTR", "MU", "NBIS", "NET", "NFLX", "NKE", "NOW",
+    "ANT", "ARM", "AVGO", "BA", "BAC", "BE", "CEG", "COIN", "COST",
+    "CRM", "CRWD", "CVX", "DDOG", "DELL", "DIS", "ENPH", "FCEL",
+    "FSLR", "GEV", "GLD", "GOOGL", "HD", "HOOD",
+    "INTC", "IWM", "JPM", "KLAC", "LLY", "MCD", "META", "MRNA", "MRVL",
+    "MSFT", "MU", "NBIS", "NET", "NFLX", "NKE", "NOW",
     "NVDA", "OKLO", "OKTA", "ORCL", "PANW", "PLTR", "PYPL",
-    "QCOM", "QQQ", "RBLX", "SBUX", "SKHY", "SLV", "SMCI",
+    "QCOM", "QQQ", "SBUX", "SKHY", "SLV", "SMCI",
     "SNDK", "SNOW", "SOFI", "SPCX", "SPX", "SPY", "TEAM", "SHOP", "TSLA",
-    "TSM", "UBER", "UPST", "USO", "V", "VRT", "VST", "WMT",
+    "TSM", "UBER", "USO", "VRT", "VST", "WMT",
     "XOM", "ZS",
 }
 
 EXCLUDED_UNIVERSE = {
-    "ASML", "CMG", "EOSE", "DIA", "FLNC", "ISRG", "MTUM", "NRG",
-    "PLUG", "REGN", "RUN", "SMH", "SOXX", "TGT", "UNH", "XLE", "XLF", "XLK",
+    "ANET", "ASML", "CAT", "CMG", "DE", "DIA", "EOSE", "FLNC", "GOOG",
+    "ISRG", "LMT", "LOW", "LRCX", "LULU", "MA", "MDB", "MSTR", "MTUM",
+    "NRG", "PLUG", "RBLX", "REGN", "RUN", "SMH", "SOXX", "TGT", "UNH",
+    "UPST", "V", "XLE", "XLF", "XLK",
 }
 
 MARKET_INDEX_SYMBOLS = {"SPY", "SPX", "IWM", "QQQ"}

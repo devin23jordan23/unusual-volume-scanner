@@ -121,6 +121,10 @@ class VolumeScannerTests(unittest.TestCase):
         self.assertIn("DIS", DEFAULT_UNIVERSE)
         self.assertEqual(SECTOR_BENCHMARKS["DIS"], "XLC")
 
+    def test_ant_is_in_default_universe_with_technology_sector_context(self):
+        self.assertIn("ANT", DEFAULT_UNIVERSE)
+        self.assertEqual(SECTOR_BENCHMARKS["ANT"], "XLK")
+
     def test_market_index_route_covers_only_primary_trading_products(self):
         self.assertEqual(MARKET_INDEX_SYMBOLS, {"SPY", "SPX", "IWM", "QQQ"})
 
@@ -176,8 +180,9 @@ class VolumeScannerTests(unittest.TestCase):
         fields = DiscordNotifier("").embed(alert)["fields"]
         self.assertIn("SPY shares", next(field["value"] for field in fields if field["name"] == "Volume Source"))
 
-    def test_both_google_share_classes_are_in_default_universe(self):
-        self.assertTrue({"GOOG", "GOOGL"}.issubset(DEFAULT_UNIVERSE))
+    def test_only_googl_share_class_is_in_default_universe(self):
+        self.assertIn("GOOGL", DEFAULT_UNIVERSE)
+        self.assertNotIn("GOOG", DEFAULT_UNIVERSE)
 
     def test_selected_bank_names_in_default_universe(self):
         self.assertTrue({"JPM", "BAC"}.issubset(DEFAULT_UNIVERSE))
@@ -214,9 +219,13 @@ class VolumeScannerTests(unittest.TestCase):
 
     def test_requested_symbols_are_removed_from_default_universe(self):
         self.assertTrue({
-            "ASML", "CMG", "EOSE", "DIA", "FLNC", "MTUM", "PLUG",
-            "REGN", "RUN", "SMH", "SOXX", "TGT", "UNH", "XLE", "XLF", "XLK",
+            "ANET", "ASML", "CAT", "CMG", "DE", "DIA", "EOSE", "FLNC", "GOOG",
+            "LMT", "LOW", "LRCX", "LULU", "MA", "MDB", "MSTR", "MTUM", "PLUG",
+            "RBLX", "REGN", "RUN", "SMH", "SOXX", "TGT", "UNH", "UPST", "V",
+            "XLE", "XLF", "XLK",
         }.isdisjoint(DEFAULT_UNIVERSE))
+        self.assertIn("COIN", DEFAULT_UNIVERSE)
+        self.assertIn("GOOGL", DEFAULT_UNIVERSE)
 
     def test_sector_leadership_boosts_priority_without_filtering(self):
         stamp = datetime(2026, 10, 6, 10, 0, tzinfo=TZ)
