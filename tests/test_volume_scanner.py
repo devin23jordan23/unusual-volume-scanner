@@ -125,6 +125,14 @@ class VolumeScannerTests(unittest.TestCase):
         self.assertIn("ANT", DEFAULT_UNIVERSE)
         self.assertEqual(SECTOR_BENCHMARKS["ANT"], "XLK")
 
+    def test_requested_movers_are_in_default_universe_with_sector_context(self):
+        self.assertTrue({"CRWV", "APP", "RKLB", "ASTS", "BABA"}.issubset(DEFAULT_UNIVERSE))
+        self.assertEqual(SECTOR_BENCHMARKS["CRWV"], "XLK")
+        self.assertEqual(SECTOR_BENCHMARKS["APP"], "XLC")
+        self.assertEqual(SECTOR_BENCHMARKS["ASTS"], "XLC")
+        self.assertEqual(SECTOR_BENCHMARKS["RKLB"], "XLI")
+        self.assertEqual(SECTOR_BENCHMARKS["BABA"], "KWEB")
+
     def test_market_index_route_covers_only_primary_trading_products(self):
         self.assertEqual(MARKET_INDEX_SYMBOLS, {"SPY", "SPX", "IWM", "QQQ"})
 

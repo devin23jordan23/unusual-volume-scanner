@@ -5,15 +5,15 @@ from .models import VolumeAlert
 
 SECTOR_BENCHMARKS = {
     "AAPL": "XLK", "ADBE": "XLK", "ANET": "XLK", "ANT": "XLK", "CRM": "XLK",
-    "CRWD": "XLK", "DDOG": "XLK", "DELL": "XLK", "MSFT": "XLK",
+    "CRWD": "XLK", "CRWV": "XLK", "DDOG": "XLK", "DELL": "XLK", "MSFT": "XLK",
     "NET": "XLK", "NOW": "XLK", "ORCL": "XLK", "PANW": "XLK",
     "PLTR": "XLK", "SNOW": "XLK", "TEAM": "XLK",
     "AMD": "SOXX", "AMAT": "SOXX", "ARM": "SOXX", "ASML": "SOXX",
     "AVGO": "SOXX", "INTC": "SOXX", "KLAC": "SOXX", "LRCX": "SOXX",
     "MRVL": "SOXX", "MU": "SOXX", "NVDA": "SOXX", "QCOM": "SOXX",
     "SMCI": "SOXX", "SNDK": "SOXX", "TSM": "SOXX", "WDC": "SOXX",
-    "DIS": "XLC", "GOOG": "XLC", "GOOGL": "XLC", "META": "XLC", "NFLX": "XLC",
-    "RBLX": "XLC",
+    "APP": "XLC", "ASTS": "XLC", "DIS": "XLC", "GOOG": "XLC", "GOOGL": "XLC",
+    "META": "XLC", "NFLX": "XLC", "RBLX": "XLC",
     "ABNB": "XLY", "AMZN": "XLY", "HD": "XLY", "LOW": "XLY",
     "LULU": "XLY", "MCD": "XLY", "NKE": "XLY", "SBUX": "XLY",
     "TGT": "XLY", "TSLA": "XLY",
@@ -24,12 +24,13 @@ SECTOR_BENCHMARKS = {
     "MRNA": "IBB", "REGN": "IBB",
     "CVX": "XLE", "XOM": "XLE",
     "BA": "XLI", "CAT": "XLI", "DE": "XLI", "GEV": "XLI",
-    "LMT": "XLI", "UBER": "XLI",
+    "LMT": "XLI", "RKLB": "XLI", "UBER": "XLI",
     "CEG": "XLU", "NRG": "XLU", "VST": "XLU",
     "COST": "XLP", "WMT": "XLP",
     "BE": "ICLN", "EOSE": "ICLN", "FCEL": "ICLN", "FLNC": "ICLN",
     "PLUG": "ICLN",
     "ENPH": "TAN", "FSLR": "TAN", "RUN": "TAN",
+    "BABA": "KWEB",
 }
 
 

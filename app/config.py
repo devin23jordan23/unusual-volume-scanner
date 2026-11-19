@@ -4,13 +4,13 @@ from dataclasses import dataclass, field
 
 DEFAULT_UNIVERSE = {
     "AAPL", "AAOI", "ABNB", "ADBE", "AFRM", "AMAT", "AMD", "AMZN",
-    "ANT", "ARM", "AVGO", "BA", "BAC", "BE", "CEG", "COIN", "COST",
-    "CRM", "CRWD", "CVX", "DDOG", "DELL", "DIS", "ENPH", "FCEL",
+    "ANT", "APP", "ARM", "ASTS", "AVGO", "BA", "BABA", "BAC", "BE",
+    "CEG", "COIN", "COST", "CRM", "CRWD", "CRWV", "CVX", "DDOG", "DELL", "DIS", "ENPH", "FCEL",
     "FSLR", "GEV", "GLD", "GOOGL", "HD", "HOOD",
     "INTC", "IWM", "JPM", "KLAC", "LLY", "MCD", "META", "MRNA", "MRVL",
     "MSFT", "MU", "NBIS", "NET", "NFLX", "NKE", "NOW",
     "NVDA", "OKLO", "OKTA", "ORCL", "PANW", "PLTR", "PYPL",
-    "QCOM", "QQQ", "SBUX", "SKHY", "SLV", "SMCI",
+    "QCOM", "QQQ", "RKLB", "SBUX", "SKHY", "SLV", "SMCI",
     "SNDK", "SNOW", "SOFI", "SPCX", "SPX", "SPY", "TEAM", "SHOP", "TSLA",
     "TSM", "UBER", "USO", "VRT", "VST", "WMT",
     "XOM", "ZS",
